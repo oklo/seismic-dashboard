@@ -10,6 +10,27 @@ export const STATIONS = Object.freeze([
 ]);
 
 export const PRESETS = Object.freeze({
+  "loma-prieta-1989": {
+    latitude: 37.036,
+    longitude: -121.88,
+    depthKm: 17.2,
+    magnitude: 6.9,
+    provenance: "USGS reviewed origin · 1989-10-18",
+  },
+  "san-francisco-1906": {
+    latitude: 37.75,
+    longitude: -122.55,
+    depthKm: 11.7,
+    magnitude: 7.9,
+    provenance: "USGS reviewed origin · 1906-04-18",
+  },
+  "hayward-1868": {
+    latitude: 37.7,
+    longitude: -122.1,
+    depthKm: 8.0,
+    magnitude: 6.8,
+    provenance: "USGS M6.8 estimate · location/depth are scenario proxies",
+  },
   "south-napa": { latitude: 38.215, longitude: -122.312, depthKm: 11.1, magnitude: 6.0 },
   "san-francisco": { latitude: 37.7749, longitude: -122.4194, depthKm: 8.0, magnitude: 7.0 },
   hayward: { latitude: 37.68, longitude: -122.10, depthKm: 8.0, magnitude: 6.8 },
@@ -63,6 +84,75 @@ function estimatePeakAccelerationG(magnitude, hypocentralDistanceKm) {
   const magnitudeScale = 10 ** (0.5 * (magnitude - 6.0));
   const attenuation = 1 + (hypocentralDistanceKm / 35.0) ** 1.35;
   return (0.018 * magnitudeScale) / attenuation;
+}
+
+export function estimateExposurePeakAccelerationG(magnitude, hypocentralDistanceKm) {
+  if (![magnitude, hypocentralDistanceKm].every(Number.isFinite)) {
+    throw new TypeError("Exposure inputs must be numbers.");
+  }
+  if (hypocentralDistanceKm < 0) throw new RangeError("Distance cannot be negative.");
+  const magnitudeScale = 10 ** (0.5 * (magnitude - 6.0));
+  const attenuation =
+    (1 + (hypocentralDistanceKm / 14.0) ** 1.55) *
+    Math.exp(hypocentralDistanceKm / 180.0);
+  return Math.min(1.5, (0.35 * magnitudeScale) / attenuation);
+}
+
+export function modifiedMercalliFromPga(pgaG) {
+  if (!Number.isFinite(pgaG)) throw new TypeError("PGA must be a number.");
+  if (pgaG <= 0) return 1;
+  const logPgaCms2 = Math.log10(pgaG * 980.665);
+  const intensity =
+    logPgaCms2 <= 1.57
+      ? 1.78 + 1.55 * logPgaCms2
+      : -1.6 + 3.7 * logPgaCms2;
+  return Math.max(1, Math.min(10, intensity));
+}
+
+export function estimateMercalliAtLocation(input, latitude, longitude) {
+  const surfaceDistanceKm = haversineKm(
+    input.latitude,
+    input.longitude,
+    latitude,
+    longitude,
+  );
+  const hypocentralDistanceKm = Math.hypot(surfaceDistanceKm, input.depthKm);
+  const pgaG = estimateExposurePeakAccelerationG(input.magnitude, hypocentralDistanceKm);
+  return { intensity: modifiedMercalliFromPga(pgaG), pgaG, surfaceDistanceKm };
+}
+
+export function modelPopulationImpact(input, populationCells, projection) {
+  validateInput(input);
+  let populationTotal = 0;
+  let populationWeightedIntensity = 0;
+  let impactMass = 0;
+  let populationMmi6Plus = 0;
+  let maximumIntensity = 1;
+
+  populationCells.forEach(([x, y, population]) => {
+    const longitude =
+      projection.longitudeMin + (x - projection.xOffset) / projection.xScale;
+    const latitude =
+      projection.latitudeMax - (y - projection.yOffset) / projection.yScale;
+    const { intensity } = estimateMercalliAtLocation(input, latitude, longitude);
+    const weight = Math.max(0, Number(population));
+    populationTotal += weight;
+    populationWeightedIntensity += intensity * weight;
+    impactMass += Math.max(0, intensity - 3) ** 2 * weight;
+    if (intensity >= 6) populationMmi6Plus += weight;
+    maximumIntensity = Math.max(maximumIntensity, intensity);
+  });
+
+  return {
+    populationTotal,
+    populationWeightedMmi:
+      populationTotal > 0 ? populationWeightedIntensity / populationTotal : 1,
+    populationMmi6Plus,
+    maximumMmi: maximumIntensity,
+    impactMass,
+    impactIndex:
+      populationTotal > 0 ? Math.min(100, (impactMass / (populationTotal * 49)) * 100) : 0,
+  };
 }
 
 function median(values) {

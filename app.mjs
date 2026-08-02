@@ -1,21 +1,26 @@
 import { CALIFORNIA_MAP_DATA } from "./california_map.mjs";
 import {
-  FEED_PROFILES,
   PRESETS,
-  STATIONS,
   WAVE_MODEL,
+  estimateMercalliAtLocation,
   modelEarthquake,
+  modelPopulationImpact,
   surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const EARTH_RADIUS_KM = 6371.0088;
-const BAY_BOUNDS = {
-  latitudeMin: 36.95,
-  latitudeMax: 38.55,
-  longitudeMin: -123.05,
-  longitudeMax: -121.15,
-};
+const IMPACT_GRID_SIZE = 14;
+const STATION_CALLOUT_OFFSETS = Object.freeze({
+  PINL: { x: 10, y: -34 },
+  BKS: { x: -76, y: -31 },
+  BDM: { x: 10, y: -10 },
+  LLNL: { x: -77, y: -12 },
+  JASP: { x: 10, y: -10 },
+  PESC: { x: 10, y: -28 },
+  MHC: { x: -77, y: -30 },
+  UMUN: { x: -77, y: -2 },
+});
 
 const elements = {
   form: document.querySelector("#quake-form"),
@@ -32,18 +37,12 @@ const elements = {
   clock: document.querySelector("#utc-clock"),
   themeToggle: document.querySelector("#theme-toggle"),
   themeLabel: document.querySelector("#theme-label"),
-  californiaGeography: document.querySelector("#california-geography"),
-  californiaStations: document.querySelector("#california-stations"),
-  californiaEpicenter: document.querySelector("#california-epicenter"),
-  californiaBayWindow: document.querySelector("#california-bay-window"),
-  californiaPWave: document.querySelector("#california-p-wave"),
-  californiaSWave: document.querySelector("#california-s-wave"),
   networkMap: document.querySelector("#network-map"),
   bayGeography: document.querySelector("#bay-geography"),
-  bayCensusFlashlight: document.querySelector("#bay-census-flashlight"),
-  censusFlashlightLens: document.querySelector("#census-flashlight-lens"),
-  censusFlashlightRing: document.querySelector("#census-flashlight-ring"),
-  flashlightHint: document.querySelector(".flashlight-hint"),
+  impactGrid: document.querySelector("#impact-grid"),
+  populationLayer: document.querySelector("#population-layer"),
+  populationImpactLayer: document.querySelector("#population-impact-layer"),
+  faultLayer: document.querySelector("#fault-layer"),
   stationLayer: document.querySelector("#station-layer"),
   epicenterLayer: document.querySelector("#epicenter-layer"),
   pWave: document.querySelector("#p-wavefront"),
@@ -57,7 +56,9 @@ const elements = {
   metricNetwork: document.querySelector("#metric-network"),
   metricWatch: document.querySelector("#metric-watch"),
   metricMajor: document.querySelector("#metric-major"),
-  metricSourceAge: document.querySelector("#metric-source-age"),
+  metricPeakMmi: document.querySelector("#metric-peak-mmi"),
+  metricPopulationExposed: document.querySelector("#metric-population-exposed"),
+  metricImpactIndex: document.querySelector("#metric-impact-index"),
   terminal: document.querySelector("#terminal-screen"),
   terminalSummary: document.querySelector("#terminal-summary"),
   relayStatus: document.querySelector("#relay-status"),
@@ -67,6 +68,10 @@ let simulation = null;
 let animationFrame = null;
 let eventTimer = null;
 let nextRunId = 0;
+let impactCells = [];
+let draggingEpicenter = false;
+let pendingPlacement = null;
+let placementFrame = null;
 
 function svgElement(name, attributes = {}) {
   const element = document.createElementNS(SVG_NS, name);
@@ -103,74 +108,116 @@ function drawGeography(layer, map, prefix) {
   });
 }
 
-function drawBayWindow() {
-  const northwest = projectPoint(
-    CALIFORNIA_MAP_DATA.california,
-    BAY_BOUNDS.latitudeMax,
-    BAY_BOUNDS.longitudeMin,
+function unprojectPoint(map, x, y) {
+  const projection = map.projection;
+  return {
+    latitude: projection.latitudeMax - (y - projection.yOffset) / projection.yScale,
+    longitude: projection.longitudeMin + (x - projection.xOffset) / projection.xScale,
+  };
+}
+
+function pointPath(points) {
+  return points.map(([x, y]) => `M${x},${y}h0`).join("");
+}
+
+function drawPopulation() {
+  const groups = { low: [], medium: [], high: [] };
+  CALIFORNIA_MAP_DATA.bay.populationCells.forEach(([x, y, population]) => {
+    const group = population >= 200 ? "high" : population >= 25 ? "medium" : "low";
+    groups[group].push([x, y]);
+  });
+  elements.populationLayer.replaceChildren(
+    ...Object.entries(groups).map(([group, points]) =>
+      svgElement("path", { class: `population-dots ${group}`, d: pointPath(points) }),
+    ),
   );
-  const southeast = projectPoint(
-    CALIFORNIA_MAP_DATA.california,
-    BAY_BOUNDS.latitudeMin,
-    BAY_BOUNDS.longitudeMax,
-  );
-  elements.californiaBayWindow.setAttribute("x", String(northwest.x));
-  elements.californiaBayWindow.setAttribute("y", String(northwest.y));
-  elements.californiaBayWindow.setAttribute("width", String(southeast.x - northwest.x));
-  elements.californiaBayWindow.setAttribute("height", String(southeast.y - northwest.y));
+}
+
+function drawFaults() {
+  elements.faultLayer.replaceChildren();
+  CALIFORNIA_MAP_DATA.bay.faults.forEach((fault) => {
+    const path = svgElement("path", {
+      class: "fault-trace",
+      d: fault.path,
+      role: "img",
+      "aria-label": fault.name,
+    });
+    const title = svgElement("title");
+    title.textContent = fault.name;
+    path.append(title);
+    elements.faultLayer.append(path);
+  });
+}
+
+function drawImpactGrid() {
+  impactCells = [];
+  elements.impactGrid.replaceChildren();
+  const { width, height, xOffset, yOffset } = CALIFORNIA_MAP_DATA.bay.projection;
+  for (let y = yOffset; y < height - yOffset; y += IMPACT_GRID_SIZE) {
+    for (let x = xOffset; x < width - xOffset; x += IMPACT_GRID_SIZE) {
+      const center = unprojectPoint(
+        CALIFORNIA_MAP_DATA.bay,
+        x + IMPACT_GRID_SIZE / 2,
+        y + IMPACT_GRID_SIZE / 2,
+      );
+      const rect = svgElement("rect", {
+        class: "impact-cell",
+        x,
+        y,
+        width: IMPACT_GRID_SIZE + 0.25,
+        height: IMPACT_GRID_SIZE + 0.25,
+      });
+      elements.impactGrid.append(rect);
+      impactCells.push({ ...center, rect });
+    }
+  }
 }
 
 function drawStaticMaps() {
-  drawGeography(
-    elements.californiaGeography,
-    CALIFORNIA_MAP_DATA.california,
-    "california",
-  );
   drawGeography(elements.bayGeography, CALIFORNIA_MAP_DATA.bay, "bay");
-  drawGeography(
-    elements.bayCensusFlashlight,
-    CALIFORNIA_MAP_DATA.bay,
-    "census-flashlight",
-  );
-  CALIFORNIA_MAP_DATA.bay.counties.forEach((county) => {
-    const point = projectPoint(
-      CALIFORNIA_MAP_DATA.bay,
-      county.center.latitude,
-      county.center.longitude,
-    );
-    const label = svgElement("text", {
-      class: "census-county-label",
-      x: point.x,
-      y: point.y,
-      "text-anchor": "middle",
-    });
-    label.textContent = county.name.replace(" County", "");
-    elements.bayCensusFlashlight.append(label);
-  });
-  drawBayWindow();
+  drawImpactGrid();
+  drawPopulation();
+  drawFaults();
 }
 
-function flashlightPoint(event) {
+function mapPoint(event) {
   const point = elements.networkMap.createSVGPoint();
   point.x = event.clientX;
   point.y = event.clientY;
   const matrix = elements.networkMap.getScreenCTM();
-  return matrix ? point.matrixTransform(matrix.inverse()) : { x: 360, y: 260 };
+  return matrix ? point.matrixTransform(matrix.inverse()) : { x: 280, y: 340 };
 }
 
-function setFlashlightActive(active) {
-  elements.bayCensusFlashlight.classList.toggle("active", active);
-  elements.censusFlashlightRing.classList.toggle("active", active);
-  elements.flashlightHint.classList.toggle("active", active);
+function placeEpicenter(event) {
+  const point = mapPoint(event);
+  const projection = CALIFORNIA_MAP_DATA.bay.projection;
+  const longitudeMax =
+    projection.longitudeMin +
+    (projection.width - 2 * projection.xOffset) / projection.xScale;
+  const latitudeMin =
+    projection.latitudeMax -
+    (projection.height - 2 * projection.yOffset) / projection.yScale;
+  const location = unprojectPoint(CALIFORNIA_MAP_DATA.bay, point.x, point.y);
+  elements.latitude.value = Math.max(
+    latitudeMin,
+    Math.min(projection.latitudeMax, location.latitude),
+  ).toFixed(3);
+  elements.longitude.value = Math.max(
+    projection.longitudeMin,
+    Math.min(longitudeMax, location.longitude),
+  ).toFixed(3);
+  elements.preset.value = "custom";
+  updatePreview();
 }
 
-function moveFlashlight(event) {
-  const point = flashlightPoint(event);
-  elements.censusFlashlightLens.setAttribute("cx", point.x.toFixed(1));
-  elements.censusFlashlightLens.setAttribute("cy", point.y.toFixed(1));
-  elements.censusFlashlightRing.setAttribute("cx", point.x.toFixed(1));
-  elements.censusFlashlightRing.setAttribute("cy", point.y.toFixed(1));
-  setFlashlightActive(true);
+function queueEpicenterPlacement(event) {
+  pendingPlacement = { clientX: event.clientX, clientY: event.clientY };
+  if (placementFrame !== null) return;
+  placementFrame = window.requestAnimationFrame(() => {
+    placementFrame = null;
+    if (pendingPlacement) placeEpicenter(pendingPlacement);
+    pendingPlacement = null;
+  });
 }
 
 function readInput() {
@@ -184,6 +231,80 @@ function readInput() {
 
 function formatSeconds(seconds) {
   return Number.isFinite(seconds) ? `${seconds.toFixed(1)}s` : "—";
+}
+
+const MMI_COLORS = Object.freeze([
+  [1, [255, 255, 255]],
+  [2, [191, 204, 255]],
+  [3, [160, 230, 255]],
+  [4, [128, 255, 255]],
+  [5, [122, 255, 147]],
+  [6, [255, 255, 0]],
+  [7, [255, 200, 0]],
+  [8, [255, 145, 0]],
+  [9, [255, 0, 0]],
+  [10, [128, 0, 0]],
+]);
+
+function mmiColor(intensity) {
+  const lowerIndex = Math.max(0, Math.min(8, Math.floor(intensity) - 1));
+  const [lowerMmi, lower] = MMI_COLORS[lowerIndex];
+  const [upperMmi, upper] = MMI_COLORS[lowerIndex + 1];
+  const fraction = Math.max(0, Math.min(1, (intensity - lowerMmi) / (upperMmi - lowerMmi)));
+  const color = lower.map((channel, index) =>
+    Math.round(channel + (upper[index] - channel) * fraction),
+  );
+  return `rgb(${color.join(" ")})`;
+}
+
+function romanMmi(intensity) {
+  const numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+  return numerals[Math.max(0, Math.min(9, Math.round(intensity) - 1))];
+}
+
+function formatPopulation(population) {
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(population);
+}
+
+function updateImpact(input) {
+  impactCells.forEach((cell) => {
+    const { intensity } = estimateMercalliAtLocation(input, cell.latitude, cell.longitude);
+    cell.rect.style.fill = mmiColor(intensity);
+    cell.rect.style.opacity = intensity < 2 ? "0" : String(Math.min(0.36, 0.06 + intensity * 0.028));
+  });
+
+  const impactGroups = Array.from({ length: 7 }, () => []);
+  CALIFORNIA_MAP_DATA.bay.populationCells.forEach(([x, y]) => {
+    const location = unprojectPoint(CALIFORNIA_MAP_DATA.bay, x, y);
+    const { intensity } = estimateMercalliAtLocation(
+      input,
+      location.latitude,
+      location.longitude,
+    );
+    const band = Math.max(4, Math.min(10, Math.floor(intensity)));
+    if (intensity >= 4) impactGroups[band - 4].push([x, y]);
+  });
+  elements.populationImpactLayer.replaceChildren(
+    ...impactGroups.map((points, index) =>
+      svgElement("path", {
+        class: `population-impact mmi-${index + 4}`,
+        d: pointPath(points),
+      }),
+    ),
+  );
+
+  const impact = modelPopulationImpact(
+    input,
+    CALIFORNIA_MAP_DATA.bay.populationCells,
+    CALIFORNIA_MAP_DATA.bay.projection,
+  );
+  elements.metricPeakMmi.textContent = `${romanMmi(impact.maximumMmi)} / ${impact.maximumMmi.toFixed(1)}`;
+  elements.metricPopulationExposed.textContent = formatPopulation(impact.populationMmi6Plus);
+  elements.metricImpactIndex.textContent = impact.impactIndex.toFixed(1);
+  return impact;
 }
 
 function clockText(date = new Date()) {
@@ -212,8 +333,8 @@ function terminalLine(tag, message, className = "", eventTime = new Date()) {
 
 function resetTerminal() {
   elements.terminal.replaceChildren();
-  terminalLine("BOOT", "BAY/CHI training relay 0.2", "muted");
-  terminalLine("SAFE", "synthetic input only · external delivery disabled", "muted");
+  terminalLine("BOOT", "BAY/CHI impact relay 0.3", "muted");
+  terminalLine("MODEL", "scenario input · delivery path simulation", "muted");
   const prompt = document.createElement("div");
   prompt.className = "terminal-prompt";
   const promptText = document.createElement("span");
@@ -257,37 +378,53 @@ function epicenterGroup(map, input, overview = false) {
 
 function drawEpicenters(input, active = false) {
   elements.epicenterLayer.replaceChildren(epicenterGroup(CALIFORNIA_MAP_DATA.bay, input));
-  elements.californiaEpicenter.replaceChildren(
-    epicenterGroup(CALIFORNIA_MAP_DATA.california, input, true),
-  );
   document
     .querySelectorAll(".epicenter-ring")
     .forEach((ring) => ring.classList.toggle("active", active));
 }
 
-function markerGroup(station, map, overview = false) {
+function markerGroup(station, map, input) {
   const point = projectPoint(map, station.latitude, station.longitude);
+  const impact = estimateMercalliAtLocation(input, station.latitude, station.longitude);
+  const offset = STATION_CALLOUT_OFFSETS[station.code] ?? { x: 10, y: -12 };
   const group = svgElement("g", {
-    class: `station-marker phase-wait${overview ? " overview" : ""}`,
+    class: "station-marker phase-wait",
     transform: `translate(${point.x} ${point.y})`,
     "data-station": station.code,
+    "data-mmi": impact.intensity.toFixed(1),
     role: "img",
-    tabindex: overview ? -1 : 0,
+    tabindex: 0,
     "aria-label": `${station.id}, waiting for wave arrival`,
   });
-  group.append(svgElement("circle", { class: "station-halo", r: overview ? 4.5 : 11 }));
-  group.append(svgElement("circle", { class: "station-core", r: overview ? 2.2 : 5.5 }));
-  if (!overview) {
-    const label = svgElement("text", { x: 10, y: -8 });
-    label.textContent = station.code;
-    const phase = svgElement("text", { class: "marker-phase", x: 10, y: 5 });
-    phase.textContent = "WAIT";
-    group.append(label, phase);
-  }
+  group.append(
+    svgElement("rect", {
+      class: "station-callout",
+      x: offset.x,
+      y: offset.y,
+      width: 67,
+      height: 25,
+      rx: 1,
+    }),
+  );
+  group.append(svgElement("circle", { class: "station-halo", r: 9 }));
+  group.append(svgElement("circle", { class: "station-core", r: 4.5 }));
+  const label = svgElement("text", {
+    class: "marker-code",
+    x: offset.x + 5,
+    y: offset.y + 9,
+  });
+  label.textContent = station.code;
+  const reading = svgElement("text", {
+    class: "marker-reading",
+    x: offset.x + 5,
+    y: offset.y + 19,
+  });
+  reading.textContent = `MMI ${impact.intensity.toFixed(1)} · WAIT`;
+  group.append(label, reading);
   return group;
 }
 
-function stationCard(station, profile) {
+function stationCard(station, input) {
   const card = document.createElement("article");
   card.className = "station-card phase-wait";
   card.dataset.station = station.code;
@@ -316,6 +453,7 @@ function stationCard(station, profile) {
 
   const values = document.createElement("div");
   values.className = "station-values";
+  const impact = estimateMercalliAtLocation(input, station.latitude, station.longitude);
   const entries = [
     ["DIST", `${station.surfaceDistanceKm.toFixed(1)} km`, "distance"],
     [
@@ -323,8 +461,8 @@ function stationCard(station, profile) {
       `${station.arrivalAfterOriginS.toFixed(1)} / ${station.strongMotionAfterOriginS.toFixed(1)}s`,
       "arrivals",
     ],
-    ["EST. PEAK", `${station.peakAccelerationG.toFixed(4)} g`, "peak"],
-    ["SOURCE AGE", `${profile.sourceAgeS.toFixed(1)}s`, "source-age"],
+    ["MMI", impact.intensity.toFixed(1), "mmi"],
+    ["PGA", `${impact.pgaG.toFixed(3)} g`, "peak"],
   ];
   entries.forEach(([label, value, key]) => {
     const item = document.createElement("div");
@@ -353,17 +491,14 @@ function bindStationHighlight(element, code) {
   element.addEventListener("blur", () => setHighlight(false));
 }
 
-function drawStations(result) {
+function drawStations(result, input) {
   elements.stationLayer.replaceChildren();
-  elements.californiaStations.replaceChildren();
   elements.stationGrid.replaceChildren();
   result.stationResults.forEach((station) => {
-    const bayMarker = markerGroup(station, CALIFORNIA_MAP_DATA.bay);
-    const californiaMarker = markerGroup(station, CALIFORNIA_MAP_DATA.california, true);
+    const bayMarker = markerGroup(station, CALIFORNIA_MAP_DATA.bay, input);
     bindStationHighlight(bayMarker, station.code);
     elements.stationLayer.append(bayMarker);
-    elements.californiaStations.append(californiaMarker);
-    elements.stationGrid.append(stationCard(station, result.profile));
+    elements.stationGrid.append(stationCard(station, input));
   });
 }
 
@@ -426,8 +561,8 @@ function updateStations(result, elapsedS, associatedStations) {
       node.setAttribute("aria-label", `${station.id}, ${label.toLowerCase()}`);
       const state = node.querySelector(".station-state");
       if (state) state.textContent = associatedStations.has(station.id) ? "ASSOCIATED" : label;
-      const markerPhase = node.querySelector(".marker-phase");
-      if (markerPhase) markerPhase.textContent = label;
+      const markerReading = node.querySelector(".marker-reading");
+      if (markerReading) markerReading.textContent = `MMI ${node.dataset.mmi} · ${label}`;
       const trace = node.querySelector(".trace-signal");
       if (trace) trace.setAttribute("d", waveformPath(station, elapsedS));
     });
@@ -484,25 +619,19 @@ function updateWavefronts(input, elapsedS) {
   );
   const bayP = wavefrontPath(CALIFORNIA_MAP_DATA.bay, input, pRadius);
   const bayS = wavefrontPath(CALIFORNIA_MAP_DATA.bay, input, sRadius);
-  const californiaP = wavefrontPath(CALIFORNIA_MAP_DATA.california, input, pRadius);
-  const californiaS = wavefrontPath(CALIFORNIA_MAP_DATA.california, input, sRadius);
   elements.pWave.setAttribute("d", bayP);
   elements.sWave.setAttribute("d", bayS);
-  elements.californiaPWave.setAttribute("d", californiaP);
-  elements.californiaSWave.setAttribute("d", californiaS);
   elements.pRadius.textContent = `${pRadius.toFixed(0)} km`;
   elements.sRadius.textContent = `${sRadius.toFixed(0)} km`;
 }
 
 function clearWavefronts() {
-  [elements.pWave, elements.sWave, elements.californiaPWave, elements.californiaSWave].forEach(
-    (wave) => wave.setAttribute("d", ""),
-  );
+  [elements.pWave, elements.sWave].forEach((wave) => wave.setAttribute("d", ""));
   elements.pRadius.textContent = "0 km";
   elements.sRadius.textContent = "0 km";
 }
 
-function alertCard(revision, eventId) {
+function alertCard(revision, eventId, impact) {
   const card = document.createElement("article");
   const isMajor = revision.classification === "major_suspected";
   card.className = `alert-card${isMajor ? " major" : ""}`;
@@ -526,6 +655,8 @@ function alertCard(revision, eventId) {
     ["Location RMS", `${revision.locationRmsS.toFixed(3)} s`],
     ["Detection", `T+${revision.detectedAfterOriginS.toFixed(1)} s`],
     ["Source age", `${revision.maxDataLatencyS.toFixed(1)} s`],
+    ["Population ≥ VI", formatPopulation(impact.populationMmi6Plus)],
+    ["Impact index", impact.impactIndex.toFixed(1)],
   ];
   fields.forEach(([label, value]) => {
     const field = document.createElement("div");
@@ -613,7 +744,7 @@ function dispatchTimelineEvent(state, event) {
       return;
     }
     terminalLine("RX", `${wireId} · signature verified · alert ID matched`, "success", timestamp);
-    alertCard(revision, state.eventId);
+    alertCard(revision, state.eventId, state.impact);
     elements.relayStatus.className = "relay-status alerting";
     elements.relayStatus.innerHTML = "<i></i> AUTHENTICATED ALERT";
     elements.terminalSummary.textContent = `Latest: ${revision.classification.replaceAll("_", " ")} · revision ${revision.revision}.`;
@@ -723,8 +854,6 @@ function cancelSimulation() {
 }
 
 function updatePreview() {
-  const profile = FEED_PROFILES[elements.profile.value];
-  elements.metricSourceAge.textContent = `${profile.sourceAgeS.toFixed(1)}s`;
   elements.simulationRate.textContent = `${elements.speed.value}× ${
     elements.speed.value === "1" ? "REAL TIME" : "REVIEW SPEED"
   }`;
@@ -736,13 +865,14 @@ function updatePreview() {
     elements.metricWatch.textContent = watch ? formatSeconds(watch.detectedAfterOriginS) : "NONE";
     elements.metricMajor.textContent = major ? formatSeconds(major.detectedAfterOriginS) : "—";
     elements.metricNetwork.textContent = `${result.stationResults.filter((station) => station.triggered).length} / 8`;
+    updateImpact(input);
     drawEpicenters(input);
-    drawStations(result);
+    drawStations(result, input);
     updateStations(result, 0, new Set());
     clearWavefronts();
     elements.simulationClock.textContent = "T+00.0s";
     if (result.revisions.length) {
-      elements.formNote.textContent = "Preview calculated. Strike to run from the origin clock.";
+      elements.formNote.textContent = "Click or drag the epicenter on the map.";
     } else if (result.outcome === "outside_association_grid") {
       elements.formNote.textContent = "This origin is outside the Bay Area association grid.";
     } else {
@@ -762,6 +892,7 @@ function runSimulation(event) {
   const input = readInput();
   const speed = Number.parseFloat(elements.speed.value);
   const result = modelEarthquake(input, elements.profile.value);
+  const impact = updateImpact(input);
   const originTime = new Date();
   const timeline = buildTimeline(result);
   const runId = nextRunId;
@@ -770,6 +901,7 @@ function runSimulation(event) {
     input,
     speed,
     result,
+    impact,
     originTime,
     eventId: `bay-${originTime.getTime()}`,
     timeline,
@@ -782,13 +914,13 @@ function runSimulation(event) {
   };
 
   setFormLocked(true);
-  elements.networkState.innerHTML = "<i></i> Wavefront in motion";
+  elements.networkState.innerHTML = "<i></i> RUNNING";
   elements.relayStatus.className = "relay-status";
   elements.relayStatus.innerHTML = "<i></i> WAITING FOR ASSOCIATION";
   elements.terminalSummary.textContent = `Synthetic M${input.magnitude.toFixed(1)} origin in progress.`;
   elements.simulationRate.textContent = `${speed}× ${speed === 1 ? "REAL TIME" : "REVIEW SPEED"}`;
   drawEpicenters(input, true);
-  drawStations(result);
+  drawStations(result, input);
   terminalLine(
     "ORIGIN",
     `SYNTHETIC M${input.magnitude.toFixed(1)} · ${input.latitude.toFixed(3)}, ${input.longitude.toFixed(3)} · depth ${input.depthKm.toFixed(1)} km`,
@@ -797,7 +929,7 @@ function runSimulation(event) {
   );
   terminalLine(
     "MODEL",
-    `P ${WAVE_MODEL.pVelocityKmS.toFixed(1)} km/s · S ${WAVE_MODEL.sVelocityKmS.toFixed(1)} km/s · hypocentral travel path`,
+    `P ${WAVE_MODEL.pVelocityKmS.toFixed(1)} km/s · S ${WAVE_MODEL.sVelocityKmS.toFixed(1)} km/s · peak MMI ${impact.maximumMmi.toFixed(1)} · impact ${impact.impactIndex.toFixed(1)}`,
     "muted",
     originTime,
   );
@@ -815,7 +947,7 @@ function resetSimulation() {
   cancelSimulation();
   elements.relayStatus.className = "relay-status";
   elements.relayStatus.innerHTML = "<i></i> SIM RELAY READY";
-  elements.networkState.innerHTML = "<i></i> Armed for simulation";
+  elements.networkState.innerHTML = "<i></i> ARMED";
   elements.terminalSummary.textContent = "Waiting for a synthetic origin.";
   resetTerminal();
   updatePreview();
@@ -859,17 +991,30 @@ elements.profile.addEventListener("change", updatePreview);
 elements.speed.addEventListener("change", updatePreview);
 elements.form.addEventListener("submit", runSimulation);
 elements.reset.addEventListener("click", resetSimulation);
-elements.networkMap.addEventListener("pointerenter", moveFlashlight);
-elements.networkMap.addEventListener("pointermove", moveFlashlight);
-elements.networkMap.addEventListener("pointerleave", () => setFlashlightActive(false));
-elements.networkMap.addEventListener("pointerup", () => setFlashlightActive(false));
+elements.networkMap.addEventListener("pointerdown", (event) => {
+  if (simulation || event.button !== 0) return;
+  draggingEpicenter = true;
+  elements.networkMap.setPointerCapture(event.pointerId);
+  queueEpicenterPlacement(event);
+});
+elements.networkMap.addEventListener("pointermove", (event) => {
+  if (draggingEpicenter) queueEpicenterPlacement(event);
+});
+elements.networkMap.addEventListener("pointerup", (event) => {
+  draggingEpicenter = false;
+  if (elements.networkMap.hasPointerCapture(event.pointerId)) {
+    elements.networkMap.releasePointerCapture(event.pointerId);
+  }
+});
+elements.networkMap.addEventListener("pointercancel", () => {
+  draggingEpicenter = false;
+});
 
 function updateClock() {
   elements.clock.textContent = `UTC ${clockText().slice(0, 8)}`;
 }
 
 drawStaticMaps();
-setFlashlightActive(true);
 const query = new URLSearchParams(window.location.search);
 const queryTheme = query.get("theme");
 setTheme(

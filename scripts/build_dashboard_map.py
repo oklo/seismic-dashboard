@@ -1,4 +1,4 @@
-"""Build compact dashboard SVG paths from U.S. Census Bureau boundaries."""
+"""Build the static Census population and USGS fault layers for the dashboard."""
 
 from __future__ import annotations
 
@@ -11,15 +11,37 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-SERVICE = (
+BOUNDARY_SERVICE = (
     "https://tigerweb.geo.census.gov/arcgis/rest/services/"
     "Generalized_ACS2024/State_County/MapServer"
 )
-STATE_URL = f"{SERVICE}/7/query"
-COUNTY_URL = f"{SERVICE}/11/query"
-SOURCE_LABEL = "U.S. Census Bureau TIGERweb, January 1 2024 generalized boundaries"
+STATE_URL = f"{BOUNDARY_SERVICE}/7/query"
+COUNTY_URL = f"{BOUNDARY_SERVICE}/11/query"
+BLOCK_URL = (
+    "https://tigerweb.geo.census.gov/arcgis/rest/services/"
+    "TIGERweb/Tracts_Blocks/MapServer/12/query"
+)
+FAULT_URL = (
+    "https://services2.arcgis.com/OCysFFatYM3MITwS/arcgis/rest/services/"
+    "Quaternary_Faults/FeatureServer/0/query"
+)
+SOURCE_LABEL = (
+    "U.S. Census Bureau TIGERweb 2020 population and 2024 generalized boundaries; "
+    "USGS Quaternary Fault and Fold Database"
+)
 CALIFORNIA_BOUNDS = (-124.65, 32.3, -114.0, 42.1)
-BAY_BOUNDS = (-123.05, 36.95, -121.15, 38.55)
+BAY_BOUNDS = (-122.82, 36.98, -121.50, 38.45)
+FAULT_NAMES = (
+    "San Andreas fault zone",
+    "San Gregorio fault zone",
+    "Hayward fault zone",
+    "Calaveras fault zone",
+    "Rodgers Creek fault",
+    "Concord fault",
+    "Green Valley fault",
+    "West Napa fault",
+    "Greenville fault zone",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,25 +104,52 @@ def _projection(
     )
 
 
-def _query(url: str, fields: str) -> dict[str, Any]:
-    query = urllib.parse.urlencode(
-        {
-            "where": "STATE='06'",
+def _query(
+    url: str,
+    fields: str,
+    *,
+    where: str = "STATE='06'",
+    bounds: tuple[float, float, float, float] | None = None,
+    return_geometry: bool = True,
+    page_size: int = 100_000,
+) -> dict[str, Any]:
+    features: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        parameters: dict[str, str | int] = {
+            "where": where,
             "outFields": fields,
-            "returnGeometry": "true",
+            "returnGeometry": str(return_geometry).lower(),
             "outSR": "4326",
+            "orderByFields": "OBJECTID",
+            "resultOffset": offset,
+            "resultRecordCount": page_size,
             "f": "geojson",
         }
-    )
-    request = urllib.request.Request(
-        f"{url}?{query}",
-        headers={"User-Agent": "economic-seismology-map-builder/1.0"},
-    )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        data = json.load(response)
-    if "error" in data:
-        raise RuntimeError(f"TIGERweb query failed: {data['error']}")
-    return data
+        if bounds is not None:
+            parameters.update(
+                {
+                    "geometry": ",".join(str(value) for value in bounds),
+                    "geometryType": "esriGeometryEnvelope",
+                    "spatialRel": "esriSpatialRelIntersects",
+                    "inSR": "4326",
+                }
+            )
+        query = urllib.parse.urlencode(parameters)
+        request = urllib.request.Request(
+            f"{url}?{query}",
+            headers={"User-Agent": "economic-seismology-map-builder/1.0"},
+        )
+        with urllib.request.urlopen(request, timeout=120) as response:
+            data = json.load(response)
+        if "error" in data:
+            raise RuntimeError(f"map service query failed: {data['error']}")
+        page = data.get("features", [])
+        features.extend(page)
+        exceeded = data.get("properties", {}).get("exceededTransferLimit", False)
+        if not exceeded or not page:
+            return {"type": "FeatureCollection", "features": features}
+        offset += len(page)
 
 
 def _perpendicular_distance(
@@ -158,6 +207,26 @@ def _path(geometry: dict[str, Any], projection: Projection, tolerance: float) ->
     return "".join(commands)
 
 
+def _lines(geometry: dict[str, Any]) -> list[list[list[float]]]:
+    coordinates = geometry["coordinates"]
+    if geometry["type"] == "LineString":
+        return [coordinates]
+    if geometry["type"] == "MultiLineString":
+        return coordinates
+    raise ValueError(f"unsupported line geometry type {geometry['type']}")
+
+
+def _line_path(geometry: dict[str, Any], projection: Projection) -> str:
+    commands: list[str] = []
+    for line in _lines(geometry):
+        simplified = _simplify(line, 0.0002)
+        if len(simplified) < 2:
+            continue
+        points = [projection.point(longitude, latitude) for longitude, latitude in simplified]
+        commands.append("M" + "L".join(f"{x:.2f},{y:.2f}" for x, y in points))
+    return "".join(commands)
+
+
 def _geometry_bounds(geometry: dict[str, Any]) -> tuple[float, float, float, float]:
     points = [point for ring in _rings(geometry) for point in ring]
     longitudes = [point[0] for point in points]
@@ -208,11 +277,54 @@ def _map_data(
     }
 
 
+def _population_cells(
+    features: list[dict[str, Any]], projection: Projection
+) -> tuple[list[list[float | int]], int]:
+    cells: dict[tuple[int, int], int] = {}
+    for feature in features:
+        properties = feature["properties"]
+        population = int(properties.get("POP100") or 0)
+        if population <= 0:
+            continue
+        latitude = float(properties["INTPTLAT"])
+        longitude = float(properties["INTPTLON"])
+        if not (
+            BAY_BOUNDS[0] <= longitude <= BAY_BOUNDS[2]
+            and BAY_BOUNDS[1] <= latitude <= BAY_BOUNDS[3]
+        ):
+            continue
+        x, y = projection.point(longitude, latitude)
+        cell = (round(x / 1.5), round(y / 1.5))
+        cells[cell] = cells.get(cell, 0) + population
+    population_cells = [
+        [round(x_cell * 1.5, 1), round(y_cell * 1.5, 1), population]
+        for (x_cell, y_cell), population in sorted(cells.items())
+    ]
+    return population_cells, sum(cell[2] for cell in population_cells)
+
+
+def _fault_data(
+    features: list[dict[str, Any]], projection: Projection
+) -> list[dict[str, str]]:
+    paths: dict[str, list[str]] = {name: [] for name in FAULT_NAMES}
+    for feature in features:
+        name = feature["properties"].get("fault_name")
+        geometry = feature.get("geometry")
+        if name in paths and geometry:
+            paths[name].append(_line_path(geometry, projection))
+    return [
+        {"name": name, "path": "".join(paths[name])}
+        for name in FAULT_NAMES
+        if paths[name]
+    ]
+
+
 def build(output: Path) -> None:
     state_collection = _query(STATE_URL, "GEOID,NAME")
     county_collection = _query(COUNTY_URL, "GEOID,NAME,CENTLAT,CENTLON")
     state = state_collection["features"][0]
     counties = county_collection["features"]
+    bay_projection = _projection(BAY_BOUNDS, 560, 680, 16)
     california = _map_data(
         state,
         counties,
@@ -223,14 +335,40 @@ def build(output: Path) -> None:
     bay = _map_data(
         state,
         counties,
-        _projection(BAY_BOUNDS, 720, 520, 18),
+        bay_projection,
         BAY_BOUNDS,
         0.0015,
     )
+    block_collection = _query(
+        BLOCK_URL,
+        "OBJECTID,GEOID,POP100,INTPTLAT,INTPTLON",
+        bounds=BAY_BOUNDS,
+        return_geometry=False,
+    )
+    population_cells, population_total = _population_cells(
+        block_collection["features"], bay_projection
+    )
+    fault_where = "fault_name IN (" + ",".join(
+        f"'{name}'" for name in FAULT_NAMES
+    ) + ")"
+    fault_collection = _query(
+        FAULT_URL,
+        "OBJECTID,fault_name,section_name,fault_id,section_id,age,slip_rate,class,"
+        "mapped_certainty",
+        where=fault_where,
+        bounds=BAY_BOUNDS,
+        page_size=2_000,
+    )
+    bay["populationCells"] = population_cells
+    bay["populationTotal"] = population_total
+    bay["peoplePerCellNote"] = "2020 Census populated-block internal points; 1.5 px aggregation"
+    bay["faults"] = _fault_data(fault_collection["features"], bay_projection)
     payload = {
         "source": SOURCE_LABEL,
-        "sourceUrl": "https://tigerweb.geo.census.gov/arcgis/rest/services/"
-        "Generalized_ACS2024/State_County/MapServer",
+        "boundarySourceUrl": BOUNDARY_SERVICE,
+        "populationSourceUrl": "https://tigerweb.geo.census.gov/arcgis/rest/services/"
+        "TIGERweb/Tracts_Blocks/MapServer/12",
+        "faultSourceUrl": "https://doi.org/10.5066/P9BCVRCK",
         "california": california,
         "bay": bay,
     }

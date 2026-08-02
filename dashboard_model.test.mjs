@@ -6,8 +6,11 @@ import {
   PRESETS,
   STATIONS,
   WAVE_MODEL,
+  estimateExposurePeakAccelerationG,
   haversineKm,
+  modifiedMercalliFromPga,
   modelEarthquake,
+  modelPopulationImpact,
   surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
 
@@ -15,6 +18,20 @@ test("station inventory matches the eight-site detector profile", () => {
   assert.equal(STATIONS.length, 8);
   assert.equal(new Set(STATIONS.map((station) => station.id)).size, 8);
   assert.ok(STATIONS.every((station) => station.id.startsWith("BK.")));
+});
+
+test("historical presets carry the reviewed or reconstructed geophysical details", () => {
+  assert.deepEqual(
+    [
+      PRESETS["loma-prieta-1989"].magnitude,
+      PRESETS["loma-prieta-1989"].depthKm,
+      PRESETS["san-francisco-1906"].magnitude,
+      PRESETS["san-francisco-1906"].depthKm,
+      PRESETS["hayward-1868"].magnitude,
+    ],
+    [6.9, 17.2, 7.9, 11.7, 6.8],
+  );
+  assert.match(PRESETS["hayward-1868"].provenance, /prox/);
 });
 
 test("South Napa reference produces ordered watch and major revisions", () => {
@@ -84,6 +101,39 @@ test("distance calculation is symmetric and zero at one point", () => {
   const forward = haversineKm(37.8, -122.2, 38.0, -122.4);
   const reverse = haversineKm(38.0, -122.4, 37.8, -122.2);
   assert.ok(Math.abs(forward - reverse) < 1e-9);
+});
+
+test("Worden PGA conversion and population exposure increase with shaking", () => {
+  const weakPga = estimateExposurePeakAccelerationG(5.5, 40);
+  const strongPga = estimateExposurePeakAccelerationG(7.0, 40);
+  assert.ok(strongPga > weakPga);
+  assert.ok(modifiedMercalliFromPga(strongPga) > modifiedMercalliFromPga(weakPga));
+
+  const projection = {
+    longitudeMin: -122.5,
+    latitudeMax: 38,
+    xOffset: 0,
+    yOffset: 0,
+    xScale: 100,
+    yScale: 100,
+  };
+  const populationCells = [
+    [50, 50, 1_000_000],
+    [80, 70, 500_000],
+  ];
+  const weak = modelPopulationImpact(
+    { magnitude: 5.5, latitude: 37.5, longitude: -122, depthKm: 10 },
+    populationCells,
+    projection,
+  );
+  const strong = modelPopulationImpact(
+    { magnitude: 7, latitude: 37.5, longitude: -122, depthKm: 10 },
+    populationCells,
+    projection,
+  );
+  assert.equal(strong.populationTotal, 1_500_000);
+  assert.ok(strong.populationWeightedMmi > weak.populationWeightedMmi);
+  assert.ok(strong.impactIndex > weak.impactIndex);
 });
 
 test("invalid model input is rejected", () => {

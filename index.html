@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="Browser-only training simulator for the Economic Seismology Bay Area alert path."
+      content="Interactive Bay Area earthquake propagation and population-impact simulator."
     >
-    <title>Bay / Chi — Earthquake Alert Simulator</title>
+    <title>Quake Impact → Market Impact</title>
     <link rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111916'/%3E%3Cpath d='M3 16h7l3-10 5 20 3-10h8' fill='none' stroke='%23c9ff3d' stroke-width='3'/%3E%3C/svg%3E">
     <script>
@@ -21,11 +21,10 @@
   <body>
     <div class="noise" aria-hidden="true"></div>
     <header class="topbar">
-      <a class="wordmark" href="./" aria-label="Bay Chi simulator home">
+      <a class="wordmark" href="./" aria-label="Quake impact to market impact simulator home">
         <span class="wordmark-mark" aria-hidden="true"></span>
-        <span>BAY / CHI</span>
+        <h1 id="page-title">quake impact <b>-&gt;</b> <em>market impact</em></h1>
       </a>
-      <div class="mode-pill"><span></span> Training mode · synthetic data</div>
       <div class="topbar-meta">
         <span id="utc-clock">UTC --:--:--</span>
         <button class="theme-toggle" id="theme-toggle" type="button"
@@ -38,38 +37,41 @@
     </header>
 
     <main>
-      <section class="intro" aria-labelledby="page-title">
-        <div>
-          <p class="eyebrow">ECONOMIC SEISMOLOGY / SIMULATOR 01</p>
-          <h1 id="page-title">Strike the Bay. <em>Watch Chicago react.</em></h1>
-        </div>
-        <p class="intro-copy">
-          Configure a synthetic earthquake, then follow the modeled signal from
-          professional Bay Area stations to an authenticated trader alert. P and S
-          wavefronts advance from one monotonic simulation clock—at real-time speed by
-          default. Nothing here uses live waveform data or sends a real alert.
-        </p>
-      </section>
-
       <section class="simulator-grid">
-        <aside class="panel controls-panel" aria-labelledby="scenario-heading">
-          <div class="panel-heading">
+        <section class="panel terminal-panel" aria-labelledby="terminal-heading">
+          <div class="terminal-bar">
+            <div class="window-lights" aria-hidden="true"><i></i><i></i><i></i></div>
             <div>
-              <p class="panel-kicker">01 / ORIGIN</p>
-              <h2 id="scenario-heading">Define the event</h2>
+              <p class="panel-kicker">CHICAGO / ALERT RELAY</p>
+              <h2 id="terminal-heading">Trader alert terminal</h2>
             </div>
-            <span class="status-tag">SIM</span>
+            <div class="relay-status" id="relay-status"><i></i> SIM RELAY READY</div>
           </div>
+          <div class="terminal-screen" id="terminal-screen" role="log" aria-live="polite"
+            aria-label="Simulated Chicago trader alert output">
+            <div class="terminal-line muted"><time>--:--:--.---</time><span>[BOOT]</span> BAY/CHI impact relay 0.3</div>
+            <div class="terminal-line muted"><time>--:--:--.---</time><span>[MODEL]</span> scenario input · delivery path simulation</div>
+            <div class="terminal-prompt"><span>chi-alert~$</span><b class="cursor"></b></div>
+          </div>
+          <div class="terminal-footer">
+            <span id="terminal-summary">Waiting for a synthetic origin.</span>
+            <span>AUTH <b>HMAC-SHA256 / SIMULATED</b></span>
+          </div>
+        </section>
 
+        <aside class="panel controls-panel" aria-label="Earthquake scenario controls">
           <form id="quake-form">
             <label class="field field-wide">
-              <span>Location preset</span>
+              <span>Earthquake</span>
               <select id="preset" name="preset">
-                <option value="south-napa">South Napa · 2014 reference</option>
-                <option value="san-francisco">San Francisco</option>
-                <option value="hayward">Hayward Fault</option>
-                <option value="san-jose">San Jose</option>
-                <option value="custom">Custom coordinates</option>
+                <option value="loma-prieta-1989">1989 Loma Prieta · Mw 6.9</option>
+                <option value="san-francisco-1906">1906 San Francisco · Mw 7.9</option>
+                <option value="hayward-1868">1868 Hayward · Mw 6.8 estimate</option>
+                <option value="south-napa">2014 South Napa · Mw 6.0</option>
+                <option value="san-francisco">San Francisco scenario · M 7.0</option>
+                <option value="hayward">Hayward scenario · M 6.8</option>
+                <option value="san-jose">San Jose scenario · M 6.5</option>
+                <option value="custom">Custom / map placement</option>
               </select>
             </label>
 
@@ -78,14 +80,14 @@
                 <span>Magnitude</span>
                 <div class="input-with-unit">
                   <b>M</b>
-                  <input id="magnitude" name="magnitude" type="number" value="6.0"
+                  <input id="magnitude" name="magnitude" type="number" value="6.9"
                     min="2.5" max="8.5" step="0.1" inputmode="decimal" required>
                 </div>
               </label>
               <label class="field">
                 <span>Depth</span>
                 <div class="input-with-unit">
-                  <input id="depth" name="depth" type="number" value="11.1"
+                  <input id="depth" name="depth" type="number" value="17.2"
                     min="0" max="80" step="0.1" inputmode="decimal" required>
                   <b>km</b>
                 </div>
@@ -95,172 +97,113 @@
             <div class="field-row">
               <label class="field">
                 <span>Latitude</span>
-                <input id="latitude" name="latitude" type="number" value="38.215"
+                <input id="latitude" name="latitude" type="number" value="37.036"
                   min="32" max="43" step="0.001" inputmode="decimal" required>
               </label>
               <label class="field">
                 <span>Longitude</span>
-                <input id="longitude" name="longitude" type="number" value="-122.312"
+                <input id="longitude" name="longitude" type="number" value="-121.880"
                   min="-126" max="-114" step="0.001" inputmode="decimal" required>
               </label>
             </div>
 
-            <label class="field field-wide">
-              <span>Data path</span>
-              <select id="feed-profile" name="feed-profile">
-                <option value="dart">Public NCEDC DART · 3.2s age</option>
-                <option value="direct">Modeled direct feed · 0.8s age</option>
-                <option value="stale">Degraded feed · 18s age / fail closed</option>
-              </select>
-            </label>
-
-            <label class="field field-wide">
-              <span>Playback</span>
-              <select id="playback-speed" name="playback-speed">
-                <option value="1">1× · real time / default</option>
-                <option value="5">5× · accelerated review</option>
-                <option value="20">20× · rapid review</option>
-              </select>
-            </label>
+            <div class="field-row">
+              <label class="field">
+                <span>Data path</span>
+                <select id="feed-profile" name="feed-profile">
+                  <option value="dart">NCEDC DART · 3.2s</option>
+                  <option value="direct">Direct feed · 0.8s</option>
+                  <option value="stale">Stale · 18s / closed</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Playback</span>
+                <select id="playback-speed" name="playback-speed">
+                  <option value="1">1× real time</option>
+                  <option value="5">5× review</option>
+                  <option value="20">20× review</option>
+                </select>
+              </label>
+            </div>
 
             <div class="action-row">
               <button class="strike-button" id="strike-button" type="submit">
                 <span class="strike-icon" aria-hidden="true">⌁</span>
-                <span>Strike</span>
-                <small>Run simulation</small>
+                <span>Run simulation</span>
               </button>
               <button class="reset-button" id="reset-button" type="button">Reset</button>
             </div>
-            <p class="form-note" id="form-note">
-              The model is illustrative. It is not a magnitude or ground-motion forecast.
-            </p>
+            <p class="form-note" id="form-note">Click or drag the epicenter on the map.</p>
           </form>
         </aside>
 
-        <section class="panel terminal-panel" aria-labelledby="terminal-heading">
-          <div class="terminal-bar">
-            <div class="window-lights" aria-hidden="true"><i></i><i></i><i></i></div>
-            <div>
-              <p class="panel-kicker">03 / CHICAGO</p>
-              <h2 id="terminal-heading">Trader alert terminal</h2>
-            </div>
-            <div class="relay-status" id="relay-status"><i></i> SIM RELAY READY</div>
-          </div>
-          <div class="terminal-screen" id="terminal-screen" role="log" aria-live="polite"
-            aria-label="Simulated Chicago trader alert output">
-            <div class="terminal-line muted"><time>--:--:--.---</time><span>[BOOT]</span> BAY/CHI training relay 0.1</div>
-            <div class="terminal-line muted"><time>--:--:--.---</time><span>[SAFE]</span> synthetic input only · external delivery disabled</div>
-            <div class="terminal-prompt"><span>chi-alert~$</span><b class="cursor"></b></div>
-          </div>
-          <div class="terminal-footer">
-            <span id="terminal-summary">Waiting for a synthetic origin.</span>
-            <span>AUTH <b>HMAC-SHA256 / SIMULATED</b></span>
-          </div>
-        </section>
-
-        <section class="panel network-panel" aria-labelledby="network-heading">
-          <div class="panel-heading">
-            <div>
-              <p class="panel-kicker">02 / CALIFORNIA</p>
-              <h2 id="network-heading">Physical propagation & station network</h2>
-            </div>
-            <span class="network-state" id="network-state"><i></i> Armed for simulation</span>
-          </div>
-
-          <div class="map-shell">
-            <div class="california-locator">
-              <div class="map-subhead">
-                <span>CALIFORNIA</span>
-                <small>STATE CONTEXT</small>
-              </div>
-              <svg id="california-map" viewBox="0 0 260 420" role="img"
-                aria-label="Detailed California county map locating the Bay Area station network">
-                <g id="california-geography"></g>
-                <g id="california-wave-layer" class="wave-layer" aria-hidden="true">
-                  <path id="california-p-wave" class="wavefront p-wave"></path>
-                  <path id="california-s-wave" class="wavefront s-wave"></path>
-                </g>
-                <rect id="california-bay-window" class="bay-window"></rect>
-                <g id="california-stations"></g>
-                <g id="california-epicenter"></g>
-              </svg>
-              <a class="map-source"
-                href="https://tigerweb.geo.census.gov/arcgis/rest/services/Generalized_ACS2024/State_County/MapServer">
-                U.S. Census Bureau · 2024 vector boundaries
-              </a>
-            </div>
-
+        <section class="panel network-panel" aria-label="Bay Area shaking and population impact">
+          <div class="impact-dashboard">
             <div class="bay-map-panel">
               <div class="map-subhead bay-subhead">
-                <span>BAY AREA / LIVE MODEL CLOCK</span>
+                <span>FAULTS / POPULATION / MODELED MMI</span>
+                <span class="network-state" id="network-state"><i></i> Armed</span>
                 <div class="simulation-clock">
                   <b id="simulation-clock">T+00.0s</b>
                   <small id="simulation-rate">1× REAL TIME</small>
                 </div>
               </div>
-              <svg id="network-map" viewBox="0 0 720 520" role="img"
-                aria-labelledby="map-title map-description">
-                <title id="map-title">Detailed Bay Area seismic station network</title>
-                <desc id="map-description">
-                  Census county vectors, eight professional BK stations, a synthetic
-                  epicenter, and geodesic P and S surface-intersection wavefronts.
-                </desc>
-                <defs>
-                  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor"
-                      stroke-width="1"></path>
-                  </pattern>
-                  <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
-                    <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
-                    <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
-                  </filter>
-                  <radialGradient id="census-flashlight-gradient">
-                    <stop offset="0%" stop-color="white" stop-opacity="1"></stop>
-                    <stop offset="68%" stop-color="white" stop-opacity="0.96"></stop>
-                    <stop offset="100%" stop-color="white" stop-opacity="0"></stop>
-                  </radialGradient>
-                  <mask id="census-flashlight-mask" maskUnits="userSpaceOnUse"
-                    x="0" y="0" width="720" height="520">
-                    <rect width="720" height="520" fill="black"></rect>
-                    <circle id="census-flashlight-lens" cx="360" cy="260" r="112"
-                      fill="url(#census-flashlight-gradient)"></circle>
-                  </mask>
-                </defs>
-                <rect class="map-grid" width="720" height="520" fill="url(#grid)"></rect>
-                <g id="bay-geography"></g>
-                <g id="bay-census-flashlight" class="census-flashlight"
-                  mask="url(#census-flashlight-mask)"></g>
-                <circle id="census-flashlight-ring" class="census-flashlight-ring"
-                  cx="360" cy="260" r="112"></circle>
-                <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
-                  <path id="p-wavefront" class="wavefront p-wave"></path>
-                  <path id="s-wavefront" class="wavefront s-wave"></path>
-                </g>
-                <g id="station-layer"></g>
-                <g id="epicenter-layer"></g>
-              </svg>
-              <div class="flashlight-hint"><i></i>Census lens · move pointer over map</div>
-              <div class="wave-readout" aria-label="Current modeled wavefront radii">
-                <span><i class="p-key"></i>P · 5.8 km/s <b id="p-radius">0 km</b></span>
-                <span><i class="s-key"></i>S · 3.4 km/s <b id="s-radius">0 km</b></span>
-                <span><i class="depth-key"></i>Surface radius accounts for source depth</span>
+              <div class="network-map-stage">
+                <svg id="network-map" viewBox="0 0 560 680" role="img"
+                  aria-labelledby="map-title map-description">
+                  <title id="map-title">Bay Area shaking, population, faults and stations</title>
+                  <desc id="map-description">
+                    Census population lights, USGS Quaternary fault traces, modeled
+                    Mercalli intensity, eight BK stations, and P and S wavefronts.
+                  </desc>
+                  <defs>
+                    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+                      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor"
+                        stroke-width="1"></path>
+                    </pattern>
+                    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+                      <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                      <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                    </filter>
+                  </defs>
+                  <rect class="map-grid" width="560" height="680" fill="url(#grid)"></rect>
+                  <g id="bay-geography"></g>
+                  <g id="impact-grid" aria-label="Modeled Modified Mercalli intensity field"></g>
+                  <g id="population-layer" aria-label="2020 Census population dot density"></g>
+                  <g id="population-impact-layer" aria-hidden="true"></g>
+                  <g id="fault-layer" aria-label="USGS Quaternary fault traces"></g>
+                  <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
+                    <path id="p-wavefront" class="wavefront p-wave"></path>
+                    <path id="s-wavefront" class="wavefront s-wave"></path>
+                  </g>
+                  <g id="station-layer"></g>
+                  <g id="epicenter-layer"></g>
+                </svg>
+                <div class="map-placement-hint">Click or drag to place epicenter</div>
+                <div class="mmi-legend" aria-label="Modified Mercalli intensity colors">
+                  <span>MMI</span><i data-mmi="2">II</i><i data-mmi="4">IV</i>
+                  <i data-mmi="6">VI</i><i data-mmi="8">VIII</i><i data-mmi="10">X</i>
+                </div>
+                <div class="wave-readout" aria-label="Current modeled wavefront radii">
+                  <span><i class="p-key"></i>P <b id="p-radius">0 km</b></span>
+                  <span><i class="s-key"></i>S <b id="s-radius">0 km</b></span>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div class="station-section">
-            <div class="station-section-heading">
-              <span>STATION TELEMETRY</span>
-              <small>Modeled values · HNZ vertical accelerometers</small>
-            </div>
-            <div class="station-grid" id="station-grid"></div>
+            <aside class="station-section" aria-label="Station telemetry streams">
+              <div class="station-section-heading">
+                <span>STATION STREAMS</span>
+                <small>BK · HNZ</small>
+              </div>
+              <div class="station-grid" id="station-grid"></div>
+            </aside>
           </div>
 
           <div class="metric-strip">
             <div class="metric">
               <span>Network</span>
               <strong id="metric-network">8 / 8</strong>
-              <small>modeled trigger sites</small>
+              <small>trigger sites</small>
             </div>
             <div class="metric">
               <span>Watch ETA</span>
@@ -273,30 +216,25 @@
               <small>if threshold met</small>
             </div>
             <div class="metric">
-              <span>Source age</span>
-              <strong id="metric-source-age">3.2s</strong>
-              <small>modeled input</small>
+              <span>Peak MMI</span>
+              <strong id="metric-peak-mmi">—</strong>
+              <small>point-source proxy</small>
+            </div>
+            <div class="metric">
+              <span>Population ≥ VI</span>
+              <strong id="metric-population-exposed">—</strong>
+              <small>modeled residents</small>
+            </div>
+            <div class="metric impact-metric">
+              <span>Impact index</span>
+              <strong id="metric-impact-index">—</strong>
+              <small>population × intensity</small>
             </div>
           </div>
         </section>
 
       </section>
-
-      <section class="safety-band" aria-label="Simulator limitations">
-        <strong>TRAINING SYSTEM</strong>
-        <p>
-          Wavefronts use homogeneous 5.8 km/s P and 3.4 km/s S velocities with source-depth
-          geometry; station amplitudes remain illustrative. This system does not consume
-          live data, predict market impact, estimate a reviewed magnitude, or place trades.
-        </p>
-        <span>Prototype · not production-ready</span>
-      </section>
     </main>
-
-    <footer>
-      <span>Economic Seismology / Bay Area → Chicago</span>
-      <span>Professional data path · human decision path</span>
-    </footer>
     <script type="module" src="app.mjs"></script>
   </body>
 </html>
