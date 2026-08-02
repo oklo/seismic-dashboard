@@ -431,7 +431,13 @@ button { font-family: var(--mono); cursor: pointer; }
 .station-card header { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
 .station-card header strong { display: block; color: var(--paper); font: 800 11px var(--mono); }
 .station-card header small { display: block; margin-top: 2px; color: var(--muted); font: 5.5px var(--mono); }
-.station-state { color: var(--muted); font: 750 6px var(--mono); letter-spacing: 0.05em; text-align: right; }
+.station-location {
+  max-width: 145px;
+  color: var(--muted);
+  font: 650 7px/1.25 var(--mono);
+  letter-spacing: 0;
+  text-align: right;
+}
 .station-trace { width: 100%; height: 28px; display: block; margin: 7px 0; overflow: visible; }
 .trace-zero { stroke: var(--line); stroke-width: 0.7; }
 .trace-signal { fill: none; stroke: var(--muted); stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -440,18 +446,13 @@ button { font-family: var(--mono); cursor: pointer; }
 .station-values b { display: block; color: var(--paper); font: 650 7.5px var(--mono); white-space: nowrap; }
 .station-card.phase-p-pick::after,
 .station-card.phase-p-wave::after { background: var(--cyan); }
-.station-card.phase-p-pick .station-state,
-.station-card.phase-p-wave .station-state,
 .station-card.phase-p-pick .trace-signal,
 .station-card.phase-p-wave .trace-signal { color: var(--cyan); stroke: var(--cyan); }
 .station-card.phase-shaking { background: color-mix(in srgb, var(--amber) 8%, var(--panel-high)); }
 .station-card.phase-shaking::after { background: var(--amber); }
-.station-card.phase-shaking .station-state { color: var(--amber); }
 .station-card.phase-shaking .trace-signal { stroke: var(--amber); }
 .station-card.phase-recorded::after,
 .station-card.associated::after { background: var(--acid-dim); }
-.station-card.phase-recorded .station-state,
-.station-card.associated .station-state { color: var(--acid-dim); }
 .station-card.phase-recorded .trace-signal { stroke: var(--acid-dim); }
 .station-card.phase-below-gate { opacity: 0.67; }
 
@@ -739,7 +740,7 @@ main {
 .station-card { padding: 7px 8px 6px; }
 .station-card header strong { font-size: 9px; }
 .station-card header small { font-size: 5px; }
-.station-state { font-size: 5.5px; }
+.station-location { font-size: 7px; }
 .station-trace { height: 20px; margin: 4px 0; }
 .station-values { grid-template-columns: repeat(4, 1fr); gap: 3px; }
 .station-values span { font-size: 4.5px; }
@@ -794,12 +795,14 @@ main {
   grid-template-areas: "terminal network";
   gap: 10px;
   align-items: stretch;
+  height: 748px;
 }
 
 .terminal-panel {
   grid-area: terminal;
   min-width: 0;
-  min-height: 748px;
+  min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-rows: 40px minmax(0, 1fr) 44px;
   color: #242824;
@@ -845,6 +848,7 @@ main {
   background-image: none;
   font: 8px/1.65 var(--mono);
   scrollbar-color: #c5cac5 #f4f5f2;
+  overscroll-behavior: contain;
 }
 .terminal-line {
   grid-template-columns: 65px 42px minmax(0, 1fr);
@@ -990,11 +994,59 @@ main {
   color: #555e57;
   background: rgba(255, 255, 255, 0.82);
   border-left: 2px solid #b5453d;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   pointer-events: none;
 }
 .simulation-clock b { color: #b5453d; font-size: 13px; }
 .simulation-clock small { color: #7c857e; font-size: 5.5px; }
+.playback-controls { display: flex; gap: 3px; pointer-events: auto; }
+.playback-controls button {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #4c554e;
+  background: #ffffff;
+  border: 1px solid #cbd1cb;
+  border-radius: 3px;
+  font: 700 9px var(--mono);
+  line-height: 1;
+}
+.playback-controls button:hover:not(:disabled) { border-color: #879188; }
+.playback-controls button:disabled { color: #b3b9b4; cursor: default; opacity: 0.65; }
+
+.california-inset { pointer-events: none; }
+.california-inset-backdrop {
+  fill: rgba(255, 255, 255, 0.82);
+  stroke: #c7cec8;
+  stroke-width: 2;
+}
+.california-inset-geography .state-shape {
+  fill: #eef1ed;
+  stroke: #66736b;
+  stroke-width: 2;
+}
+.california-inset-geography .county-shape {
+  fill: none;
+  stroke: #a9b2aa;
+  stroke-width: 1.1;
+  opacity: 0.72;
+}
+.california-inset-window {
+  fill: rgba(181, 69, 61, 0.08);
+  stroke: #b5453d;
+  stroke-width: 2.5;
+  stroke-dasharray: 5 4;
+}
+.california-inset-label {
+  fill: #505b53;
+  font: 800 15px var(--mono);
+  letter-spacing: 0.08em;
+}
 
 .map-data-strip {
   min-height: 33px;
@@ -1047,7 +1099,11 @@ main {
 .right-rail .station-card { padding: 5px 6px 4px; background: #ffffff; }
 .right-rail .station-card header strong { font-size: 8px; }
 .right-rail .station-card header small { display: none; }
-.right-rail .station-state { font-size: 5px; }
+.right-rail .station-location {
+  max-width: 132px;
+  font-size: 7px;
+  line-height: 1.2;
+}
 .right-rail .station-trace { height: 11px; margin: 1px 0; }
 .right-rail .station-values { gap: 2px; }
 .right-rail .station-values span { font-size: 4px; }
@@ -1055,9 +1111,6 @@ main {
 .station-card.phase-shaking::after,
 .station-card.phase-recorded::after,
 .station-card.associated::after { background: var(--station-mmi-color, #7c867e); }
-.station-card.phase-shaking .station-state,
-.station-card.phase-recorded .station-state,
-.station-card.associated .station-state { color: var(--station-mmi-color, #59645c); }
 .station-card.phase-shaking .trace-signal,
 .station-card.phase-recorded .trace-signal { stroke: var(--station-mmi-color, #59645c); }
 
@@ -1066,8 +1119,12 @@ main {
 .metric strong { font-size: clamp(15px, 1.45vw, 21px); }
 
 @media (max-width: 1120px) {
-  .simulator-grid { grid-template-columns: 1fr; grid-template-areas: "terminal" "network"; }
-  .terminal-panel { min-height: 520px; }
+  .simulator-grid {
+    height: auto;
+    grid-template-columns: 1fr;
+    grid-template-areas: "terminal" "network";
+  }
+  .terminal-panel { min-height: 0; height: 520px; }
   .impact-dashboard { grid-template-columns: minmax(470px, 1fr) 210px; }
 }
 

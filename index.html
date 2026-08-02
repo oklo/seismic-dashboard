@@ -49,7 +49,7 @@
             <div class="bay-column">
               <div class="bay-map-panel">
                 <div class="network-map-stage">
-                  <svg id="network-map" viewBox="0 0 560 680" role="img"
+                  <svg id="network-map" viewBox="0 0 840 680" role="img"
                     aria-labelledby="map-title map-description">
                     <title id="map-title">Bay Area shaking, population, faults and stations</title>
                     <desc id="map-description">
@@ -66,12 +66,15 @@
                         <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
                       </filter>
                     </defs>
-                    <rect class="map-grid" width="560" height="680" fill="url(#grid)"></rect>
+                    <rect class="map-grid" width="840" height="680" fill="url(#grid)"></rect>
                     <g id="bay-geography"></g>
                     <g id="impact-grid" aria-label="Modeled Modified Mercalli intensity field"></g>
                     <g id="population-layer" aria-label="2020 Census population dot density"></g>
                     <g id="population-impact-layer" aria-hidden="true"></g>
                     <g id="fault-layer" aria-label="USGS Quaternary fault traces"></g>
+                    <g id="california-inset" class="california-inset"
+                      transform="translate(34 270) scale(.5)"
+                      aria-label="California locator inset"></g>
                     <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
                       <path id="p-wavefront" class="wavefront p-wave"></path>
                       <path id="s-wavefront" class="wavefront s-wave"></path>
@@ -80,8 +83,16 @@
                     <g id="epicenter-layer"></g>
                   </svg>
                   <div class="simulation-clock">
-                    <b id="simulation-clock">T+00.0s</b>
-                    <small id="simulation-rate">1× REAL TIME</small>
+                    <div>
+                      <b id="simulation-clock">T+00.0s</b>
+                      <small id="simulation-rate">1× REAL TIME</small>
+                    </div>
+                    <div class="playback-controls" aria-label="Simulation playback controls">
+                      <button id="play-button" type="button" aria-label="Play simulation"
+                        title="Play simulation">▶</button>
+                      <button id="pause-button" type="button" aria-label="Pause simulation"
+                        title="Pause simulation" disabled>Ⅱ</button>
+                    </div>
                   </div>
                 </div>
                 <div class="map-data-strip">

@@ -9,16 +9,19 @@ then into a preliminary population-weighted impact estimate.
 Choose a historical or scenario event, click or drag its epicenter on the map,
 and press **Run simulation**. The dashboard includes:
 
-- A light laptop-demo layout with a full-height code-style output pane, central
-  Bay map, and a narrow simulation/station rail.
+- A light laptop-demo layout with a fixed-height, independently scrolling
+  code-style output pane, central Bay map, and a narrow simulation/station rail.
 - 1989 Loma Prieta, 1906 San Francisco, 1868 Hayward, and 2014 South Napa presets.
-- A tall Bay Area map with gray 2020 Census population dots that light by local
-  MMI as the S-wave reaches them, plus named USGS Quaternary fault traces.
-- Eight professional BK station locations with local PGA, P/S arrivals, phase,
-  association state, compact waveform traces, and MMI that mounts during shaking
-  before holding the final modeled site value.
+- A landscape Bay Area map that fills its panel, with gray 2020 Census population
+  dots that light by local MMI as the S-wave reaches them, named USGS Quaternary
+  fault traces, and a California locator inset in the Pacific.
+- Eight professional BK station locations with physical site names, local PGA,
+  P/S arrivals, phase, compact waveform traces, and MMI that mounts during
+  shaking before holding the final modeled site value.
 - Depth-aware P- and S-wave surface intersections driven by one monotonic clock;
   playback defaults to real time and does not drift after dropped rendering frames.
+  Pause/resume freezes event order and accumulated shaking, then shifts the clock
+  origin so playback continues from the same instant.
 - Population at modeled MMI VI or higher and an initial population × intensity
   impact index.
 

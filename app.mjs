@@ -43,6 +43,7 @@ const elements = {
   populationLayer: document.querySelector("#population-layer"),
   populationImpactLayer: document.querySelector("#population-impact-layer"),
   faultLayer: document.querySelector("#fault-layer"),
+  californiaInset: document.querySelector("#california-inset"),
   stationLayer: document.querySelector("#station-layer"),
   epicenterLayer: document.querySelector("#epicenter-layer"),
   pWave: document.querySelector("#p-wavefront"),
@@ -50,6 +51,8 @@ const elements = {
   stationGrid: document.querySelector("#station-grid"),
   simulationClock: document.querySelector("#simulation-clock"),
   simulationRate: document.querySelector("#simulation-rate"),
+  play: document.querySelector("#play-button"),
+  pause: document.querySelector("#pause-button"),
   pRadius: document.querySelector("#p-radius"),
   sRadius: document.querySelector("#s-radius"),
   metricNetwork: document.querySelector("#metric-network"),
@@ -79,6 +82,7 @@ let reachedImpactMass = 0;
 let draggingEpicenter = false;
 let pendingPlacement = null;
 let placementFrame = null;
+let terminalFollowsLatest = true;
 
 function svgElement(name, attributes = {}) {
   const element = document.createElementNS(SVG_NS, name);
@@ -156,6 +160,53 @@ function drawFaults() {
   });
 }
 
+function geographicBounds(map) {
+  const projection = map.projection;
+  return {
+    longitudeMin: projection.longitudeMin,
+    longitudeMax:
+      projection.longitudeMin +
+      (projection.width - 2 * projection.xOffset) / projection.xScale,
+    latitudeMin:
+      projection.latitudeMax -
+      (projection.height - 2 * projection.yOffset) / projection.yScale,
+    latitudeMax: projection.latitudeMax,
+  };
+}
+
+function drawCaliforniaInset() {
+  const root = elements.californiaInset;
+  const map = CALIFORNIA_MAP_DATA.california;
+  const geography = svgElement("g", { class: "california-inset-geography" });
+  const backdrop = svgElement("rect", {
+    class: "california-inset-backdrop",
+    x: 5,
+    y: 58,
+    width: 250,
+    height: 300,
+    rx: 7,
+  });
+  drawGeography(geography, map, "california-inset");
+
+  const bayBounds = geographicBounds(CALIFORNIA_MAP_DATA.bay);
+  const topLeft = projectPoint(map, bayBounds.latitudeMax, bayBounds.longitudeMin);
+  const bottomRight = projectPoint(map, bayBounds.latitudeMin, bayBounds.longitudeMax);
+  const window = svgElement("rect", {
+    class: "california-inset-window",
+    x: topLeft.x,
+    y: topLeft.y,
+    width: bottomRight.x - topLeft.x,
+    height: bottomRight.y - topLeft.y,
+  });
+  const label = svgElement("text", {
+    class: "california-inset-label",
+    x: 17,
+    y: 47,
+  });
+  label.textContent = "CALIFORNIA";
+  root.replaceChildren(backdrop, geography, window, label);
+}
+
 function drawImpactGrid() {
   impactCells = [];
   elements.impactGrid.replaceChildren();
@@ -185,6 +236,7 @@ function drawStaticMaps() {
   drawImpactGrid();
   drawPopulation();
   drawFaults();
+  drawCaliforniaInset();
 }
 
 function mapPoint(event) {
@@ -428,10 +480,19 @@ function terminalLine(tag, message, className = "", eventTime = new Date()) {
   text.textContent = message;
   line.append(time, tagNode, text);
   elements.terminal.append(line);
-  elements.terminal.scrollTop = elements.terminal.scrollHeight;
+  scrollTerminalToLatest();
+}
+
+function scrollTerminalToLatest(force = false) {
+  if (!force && !terminalFollowsLatest) return;
+  terminalFollowsLatest = true;
+  window.requestAnimationFrame(() => {
+    elements.terminal.scrollTop = elements.terminal.scrollHeight;
+  });
 }
 
 function resetTerminal() {
+  terminalFollowsLatest = true;
   elements.terminal.replaceChildren();
   terminalLine("BOOT", "BAY/CHI impact relay 0.3", "muted");
   terminalLine("MODEL", "scenario input · delivery path simulation", "muted");
@@ -443,6 +504,7 @@ function resetTerminal() {
   cursor.className = "cursor";
   prompt.append(promptText, cursor);
   elements.terminal.append(prompt);
+  scrollTerminalToLatest(true);
 }
 
 function epicenterGroup(map, input, overview = false) {
@@ -537,10 +599,10 @@ function stationCard(station, input) {
   const channel = document.createElement("small");
   channel.textContent = station.id;
   identity.append(code, channel);
-  const state = document.createElement("b");
-  state.className = "station-state";
-  state.textContent = "WAIT";
-  header.append(identity, state);
+  const location = document.createElement("b");
+  location.className = "station-location";
+  location.textContent = station.siteName;
+  header.append(identity, location);
 
   const trace = svgElement("svg", {
     class: "station-trace",
@@ -674,8 +736,6 @@ function updateStations(result, elapsedS, associatedStations) {
       if (stationColor) node.style.setProperty("--station-mmi-color", stationColor);
       else node.style.removeProperty("--station-mmi-color");
       node.setAttribute("aria-label", `${station.id}, ${label.toLowerCase()}`);
-      const state = node.querySelector(".station-state");
-      if (state) state.textContent = associatedStations.has(station.id) ? "ASSOCIATED" : label;
       const markerReading = node.querySelector(".marker-reading");
       if (markerReading) markerReading.textContent = `MMI ${observedMmiLabel} · ${label}`;
       const mmiValue = node.querySelector('[data-value="mmi"]');
@@ -796,7 +856,7 @@ function alertCard(revision, eventId, impact) {
   stations.textContent = `CONTRIBUTING // ${revision.stationCodes.join(" · ")}`;
   card.append(header, grid, stations);
   elements.terminal.append(card);
-  elements.terminal.scrollTop = elements.terminal.scrollHeight;
+  scrollTerminalToLatest();
 }
 
 function eventTime(simulationState, elapsedS) {
@@ -901,6 +961,16 @@ function setFormLocked(locked) {
   elements.strike.disabled = locked;
 }
 
+function setPlaybackState(state) {
+  const paused = state === "paused";
+  const running = state === "running";
+  elements.play.disabled = running;
+  elements.pause.disabled = !running;
+  const playLabel = paused ? "Resume simulation" : "Play simulation";
+  elements.play.setAttribute("aria-label", playLabel);
+  elements.play.title = playLabel;
+}
+
 function simulationFinishTime(result, timeline) {
   const latestShaking = Math.max(
     ...result.stationResults.map(
@@ -913,6 +983,7 @@ function simulationFinishTime(result, timeline) {
 }
 
 function elapsedSimulationSeconds(state, now = performance.now()) {
+  if (state.paused) return state.elapsedS;
   return ((now - state.startedAtPerformanceMs) / 1000) * state.speed;
 }
 
@@ -925,7 +996,7 @@ function scheduleNextTimelineEvent(state) {
 }
 
 function processTimeline(runId) {
-  if (!simulation || simulation.runId !== runId) return;
+  if (!simulation || simulation.runId !== runId || simulation.paused) return;
   const state = simulation;
   const elapsedS = elapsedSimulationSeconds(state);
   while (state.nextEventIndex < state.timeline.length) {
@@ -938,7 +1009,7 @@ function processTimeline(runId) {
 }
 
 function renderSimulationFrame(runId) {
-  if (!simulation || simulation.runId !== runId) return;
+  if (!simulation || simulation.runId !== runId || simulation.paused) return;
   const state = simulation;
   const now = performance.now();
   const elapsedS = elapsedSimulationSeconds(state, now);
@@ -956,6 +1027,7 @@ function renderSimulationFrame(runId) {
     updatePropagationReveal(state.finishAtS);
     updateStations(state.result, state.finishAtS, state.associatedStations);
     setFormLocked(false);
+    setPlaybackState("idle");
     elements.simulationClock.textContent = `T+${state.finishAtS.toFixed(1)}s`;
     if (eventTimer !== null) window.clearTimeout(eventTimer);
     eventTimer = null;
@@ -974,6 +1046,41 @@ function cancelSimulation() {
   eventTimer = null;
   simulation = null;
   setFormLocked(false);
+  setPlaybackState("idle");
+}
+
+function pauseSimulation() {
+  if (!simulation || simulation.paused) return;
+  const now = performance.now();
+  simulation.elapsedS = elapsedSimulationSeconds(simulation, now);
+  simulation.paused = true;
+  simulation.pausedAtPerformanceMs = now;
+  if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+  if (eventTimer !== null) window.clearTimeout(eventTimer);
+  animationFrame = null;
+  eventTimer = null;
+  elements.simulationRate.textContent = `${simulation.speed}× PAUSED`;
+  setPlaybackState("paused");
+}
+
+function playSimulation() {
+  if (!simulation) {
+    elements.form.requestSubmit();
+    return;
+  }
+  if (!simulation.paused) return;
+  const state = simulation;
+  const now = performance.now();
+  state.startedAtPerformanceMs += now - state.pausedAtPerformanceMs;
+  state.pausedAtPerformanceMs = null;
+  state.paused = false;
+  state.lastStationRenderMs = -Infinity;
+  elements.simulationRate.textContent = `${state.speed}× ${
+    state.speed === 1 ? "REAL TIME" : "REVIEW SPEED"
+  }`;
+  setPlaybackState("running");
+  scheduleNextTimelineEvent(state);
+  animationFrame = window.requestAnimationFrame(() => renderSimulationFrame(state.runId));
 }
 
 function updatePreview() {
@@ -1033,10 +1140,13 @@ function runSimulation(event) {
     startedAtPerformanceMs: performance.now(),
     lastStationRenderMs: -Infinity,
     elapsedS: 0,
+    paused: false,
+    pausedAtPerformanceMs: null,
     finishAtS: simulationFinishTime(result, timeline),
   };
 
   setFormLocked(true);
+  setPlaybackState("running");
   elements.relayStatus.className = "relay-status";
   elements.relayStatus.textContent = "Waiting for association";
   elements.terminalSummary.textContent = `Synthetic M${input.magnitude.toFixed(1)} origin in progress.`;
@@ -1094,6 +1204,19 @@ elements.profile.addEventListener("change", updatePreview);
 elements.speed.addEventListener("change", updatePreview);
 elements.form.addEventListener("submit", runSimulation);
 elements.reset.addEventListener("click", resetSimulation);
+elements.play.addEventListener("click", playSimulation);
+elements.pause.addEventListener("click", pauseSimulation);
+elements.terminal.addEventListener(
+  "scroll",
+  () => {
+    const distanceFromLatest =
+      elements.terminal.scrollHeight -
+      elements.terminal.clientHeight -
+      elements.terminal.scrollTop;
+    terminalFollowsLatest = distanceFromLatest <= 24;
+  },
+  { passive: true },
+);
 elements.networkMap.addEventListener("pointerdown", (event) => {
   if (simulation || event.button !== 0) return;
   draggingEpicenter = true;
@@ -1126,6 +1249,7 @@ updateClock();
 window.setInterval(updateClock, 250);
 resetTerminal();
 updatePreview();
+setPlaybackState("idle");
 if (query.get("autorun") === "1") {
   window.requestAnimationFrame(() => elements.form.requestSubmit());
 }

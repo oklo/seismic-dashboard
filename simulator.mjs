@@ -1,12 +1,60 @@
 export const STATIONS = Object.freeze([
-  { id: "BK.BKS.00.HNZ", code: "BKS", latitude: 37.876221, longitude: -122.23558 },
-  { id: "BK.PINL.00.HNZ", code: "PINL", latitude: 38.01, longitude: -122.36602 },
-  { id: "BK.JASP.00.HNZ", code: "JASP", latitude: 37.40337, longitude: -122.24048 },
-  { id: "BK.LLNL.00.HNZ", code: "LLNL", latitude: 37.68188, longitude: -121.71675 },
-  { id: "BK.MHC.00.HNZ", code: "MHC", latitude: 37.34164, longitude: -121.64257 },
-  { id: "BK.UMUN.00.HNZ", code: "UMUN", latitude: 37.158363, longitude: -121.903434 },
-  { id: "BK.PESC.00.HNZ", code: "PESC", latitude: 37.24611, longitude: -122.383 },
-  { id: "BK.BDM.00.HNZ", code: "BDM", latitude: 37.953972, longitude: -121.86554 },
+  {
+    id: "BK.BKS.00.HNZ",
+    code: "BKS",
+    siteName: "Byerly Seismographic Vault",
+    latitude: 37.876221,
+    longitude: -122.23558,
+  },
+  {
+    id: "BK.PINL.00.HNZ",
+    code: "PINL",
+    siteName: "Point Pinole",
+    latitude: 38.01,
+    longitude: -122.36602,
+  },
+  {
+    id: "BK.JASP.00.HNZ",
+    code: "JASP",
+    siteName: "Jasper Ridge Ecological Reserve",
+    latitude: 37.40337,
+    longitude: -122.24048,
+  },
+  {
+    id: "BK.LLNL.00.HNZ",
+    code: "LLNL",
+    siteName: "Lawrence Livermore National Laboratory",
+    latitude: 37.68188,
+    longitude: -121.71675,
+  },
+  {
+    id: "BK.MHC.00.HNZ",
+    code: "MHC",
+    siteName: "Lick Observatory",
+    latitude: 37.34164,
+    longitude: -121.64257,
+  },
+  {
+    id: "BK.UMUN.00.HNZ",
+    code: "UMUN",
+    siteName: "Mount Umunhum",
+    latitude: 37.158363,
+    longitude: -121.903434,
+  },
+  {
+    id: "BK.PESC.00.HNZ",
+    code: "PESC",
+    siteName: "Peninsula Open Space · Pescadero",
+    latitude: 37.24611,
+    longitude: -122.383,
+  },
+  {
+    id: "BK.BDM.00.HNZ",
+    code: "BDM",
+    siteName: "Black Diamond Mines Park",
+    latitude: 37.953972,
+    longitude: -121.86554,
+  },
 ]);
 
 export const PRESETS = Object.freeze({

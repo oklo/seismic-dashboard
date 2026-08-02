@@ -30,7 +30,7 @@ SOURCE_LABEL = (
     "USGS Quaternary Fault and Fold Database"
 )
 CALIFORNIA_BOUNDS = (-124.65, 32.3, -114.0, 42.1)
-BAY_BOUNDS = (-123.15, 36.95, -121.45, 38.55)
+BAY_BOUNDS = (-123.95, 36.95, -121.45, 38.55)
 FAULT_NAMES = (
     "San Andreas fault zone",
     "San Gregorio fault zone",
@@ -324,7 +324,7 @@ def build(output: Path) -> None:
     county_collection = _query(COUNTY_URL, "GEOID,NAME,CENTLAT,CENTLON")
     state = state_collection["features"][0]
     counties = county_collection["features"]
-    bay_projection = _projection(BAY_BOUNDS, 560, 680, 16)
+    bay_projection = _projection(BAY_BOUNDS, 840, 680, 16)
     california = _map_data(
         state,
         counties,

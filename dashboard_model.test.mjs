@@ -18,6 +18,9 @@ test("station inventory matches the eight-site detector profile", () => {
   assert.equal(STATIONS.length, 8);
   assert.equal(new Set(STATIONS.map((station) => station.id)).size, 8);
   assert.ok(STATIONS.every((station) => station.id.startsWith("BK.")));
+  assert.ok(STATIONS.every((station) => station.siteName.length > 5));
+  assert.equal(STATIONS.find((station) => station.code === "BKS").siteName, "Byerly Seismographic Vault");
+  assert.equal(STATIONS.find((station) => station.code === "MHC").siteName, "Lick Observatory");
 });
 
 test("historical presets carry the reviewed or reconstructed geophysical details", () => {
