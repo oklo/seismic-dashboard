@@ -7,6 +7,18 @@ Choose a synthetic earthquake and data-source profile, press **Strike**, and wat
 modeled station triggers become authenticated `watch` and `major_suspected`
 revisions in a simple Chicago trader terminal.
 
+The second iteration adds:
+
+- Light mode by default with a persistent dark-mode toggle.
+- A local vector map of California and all 58 counties, with a detailed Bay inset.
+- Depth-aware geodesic P- and S-wave surface intersections driven from one
+  monotonic simulation clock.
+- Real-time playback by default, with accelerated review modes.
+- Per-station distance, P/S arrival, estimated peak acceleration, source age,
+  waveform trace, phase and association state.
+- Alert scheduling independent from visual rendering, so dropped animation frames
+  do not change modeled delivery times.
+
 **Live dashboard:** https://oklo.github.io/seismic-dashboard/
 
 ## Safety boundary
@@ -15,6 +27,10 @@ This site uses no live waveform data, makes no network requests, sends no alerts
 and contains no trading or order-entry logic. Its station-arrival and ground-motion
 calculations are illustrative and are not a validated magnitude or ground-motion
 model. Do not use it for live trading or public-safety decisions.
+
+The map is generated at build time from the U.S. Census Bureau's generalized
+January 1, 2024 TIGERweb state and county boundaries. The live dashboard does not
+contact a map service.
 
 ## Run locally
 
@@ -29,4 +45,10 @@ with:
 
 ```bash
 node --test dashboard_model.test.mjs
+```
+
+Rebuild the checked-in vector map with:
+
+```bash
+python3 scripts/build_dashboard_map.py --output california_map.mjs
 ```

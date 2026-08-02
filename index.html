@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,6 +8,12 @@
       content="Browser-only training simulator for the Economic Seismology Bay Area alert path."
     >
     <title>Bay / Chi — Earthquake Alert Simulator</title>
+    <script>
+      try {
+        const theme = localStorage.getItem("bay-chi-theme");
+        if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+      } catch (_) {}
+    </script>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -20,6 +26,11 @@
       <div class="mode-pill"><span></span> Training mode · synthetic data</div>
       <div class="topbar-meta">
         <span id="utc-clock">UTC --:--:--</span>
+        <button class="theme-toggle" id="theme-toggle" type="button"
+          aria-label="Switch to dark mode" aria-pressed="false">
+          <span class="theme-icon" aria-hidden="true">◐</span>
+          <span id="theme-label">Dark</span>
+        </button>
         <a href="https://github.com/oklo/seismic-dashboard">Source</a>
       </div>
     </header>
@@ -32,8 +43,9 @@
         </div>
         <p class="intro-copy">
           Configure a synthetic earthquake, then follow the modeled signal from
-          professional Bay Area stations to an authenticated trader alert. Nothing on
-          this page uses live waveform data or sends a real alert.
+          professional Bay Area stations to an authenticated trader alert. P and S
+          wavefronts advance from one monotonic simulation clock—at real-time speed by
+          default. Nothing here uses live waveform data or sends a real alert.
         </p>
       </section>
 
@@ -103,8 +115,8 @@
             <label class="field field-wide">
               <span>Playback</span>
               <select id="playback-speed" name="playback-speed">
-                <option value="5">5× · default</option>
-                <option value="1">1× · modeled wall clock</option>
+                <option value="1">1× · real time / default</option>
+                <option value="5">5× · accelerated review</option>
                 <option value="20">20× · rapid review</option>
               </select>
             </label>
@@ -127,44 +139,82 @@
           <div class="panel-heading">
             <div>
               <p class="panel-kicker">02 / CALIFORNIA</p>
-              <h2 id="network-heading">Bay station network</h2>
+              <h2 id="network-heading">Physical propagation & station network</h2>
             </div>
             <span class="network-state" id="network-state"><i></i> Armed for simulation</span>
           </div>
 
-          <div class="map-wrap">
-            <svg id="network-map" viewBox="0 0 720 500" role="img"
-              aria-labelledby="map-title map-description">
-              <title id="map-title">Bay Area seismic station network</title>
-              <desc id="map-description">
-                A schematic map showing eight professional BK stations and the configured
-                synthetic epicenter.
-              </desc>
-              <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor"
-                    stroke-width="1"></path>
-                </pattern>
-                <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
-                  <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
-                  <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
-                </filter>
-              </defs>
-              <rect class="map-grid" width="720" height="500" fill="url(#grid)"></rect>
-              <path class="coast" d="M92,8 C116,87 131,127 174,160 C212,190 207,227 253,252 C278,266 286,298 307,315 C338,339 369,340 381,374 C392,404 425,425 476,492"></path>
-              <path class="bay" d="M184,153 C222,163 230,183 220,207 C209,232 230,257 259,268 C278,275 293,293 294,318 C259,310 236,296 220,274 C199,245 179,226 167,201 C157,179 163,162 184,153Z"></path>
-              <g id="range-rings" aria-hidden="true"></g>
-              <g id="station-layer"></g>
-              <g id="epicenter-layer"></g>
-              <text class="map-label" x="30" y="42">38.5° N</text>
-              <text class="map-label" x="30" y="475">37.0° N</text>
-              <text class="map-label map-label-right" x="690" y="475">121.2° W</text>
-            </svg>
-            <div class="map-legend">
-              <span><i class="legend-dot station-dot"></i> BK HNZ station</span>
-              <span><i class="legend-dot trigger-dot"></i> Trigger received</span>
-              <span><i class="legend-cross">×</i> Synthetic origin</span>
+          <div class="map-shell">
+            <div class="california-locator">
+              <div class="map-subhead">
+                <span>CALIFORNIA</span>
+                <small>STATE CONTEXT</small>
+              </div>
+              <svg id="california-map" viewBox="0 0 260 420" role="img"
+                aria-label="Detailed California county map locating the Bay Area station network">
+                <g id="california-geography"></g>
+                <g id="california-wave-layer" class="wave-layer" aria-hidden="true">
+                  <path id="california-p-wave" class="wavefront p-wave"></path>
+                  <path id="california-s-wave" class="wavefront s-wave"></path>
+                </g>
+                <rect id="california-bay-window" class="bay-window"></rect>
+                <g id="california-stations"></g>
+                <g id="california-epicenter"></g>
+              </svg>
+              <a class="map-source"
+                href="https://tigerweb.geo.census.gov/arcgis/rest/services/Generalized_ACS2024/State_County/MapServer">
+                U.S. Census Bureau · 2024 vector boundaries
+              </a>
             </div>
+
+            <div class="bay-map-panel">
+              <div class="map-subhead bay-subhead">
+                <span>BAY AREA / LIVE MODEL CLOCK</span>
+                <div class="simulation-clock">
+                  <b id="simulation-clock">T+00.0s</b>
+                  <small id="simulation-rate">1× REAL TIME</small>
+                </div>
+              </div>
+              <svg id="network-map" viewBox="0 0 720 520" role="img"
+                aria-labelledby="map-title map-description">
+                <title id="map-title">Detailed Bay Area seismic station network</title>
+                <desc id="map-description">
+                  Census county vectors, eight professional BK stations, a synthetic
+                  epicenter, and geodesic P and S surface-intersection wavefronts.
+                </desc>
+                <defs>
+                  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor"
+                      stroke-width="1"></path>
+                  </pattern>
+                  <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                    <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                  </filter>
+                </defs>
+                <rect class="map-grid" width="720" height="520" fill="url(#grid)"></rect>
+                <g id="bay-geography"></g>
+                <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
+                  <path id="p-wavefront" class="wavefront p-wave"></path>
+                  <path id="s-wavefront" class="wavefront s-wave"></path>
+                </g>
+                <g id="station-layer"></g>
+                <g id="epicenter-layer"></g>
+              </svg>
+              <div class="wave-readout" aria-label="Current modeled wavefront radii">
+                <span><i class="p-key"></i>P · 5.8 km/s <b id="p-radius">0 km</b></span>
+                <span><i class="s-key"></i>S · 3.4 km/s <b id="s-radius">0 km</b></span>
+                <span><i class="depth-key"></i>Surface radius accounts for source depth</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="station-section">
+            <div class="station-section-heading">
+              <span>STATION TELEMETRY</span>
+              <small>Modeled values · HNZ vertical accelerometers</small>
+            </div>
+            <div class="station-grid" id="station-grid"></div>
           </div>
 
           <div class="metric-strip">
@@ -216,9 +266,9 @@
       <section class="safety-band" aria-label="Simulator limitations">
         <strong>TRAINING SYSTEM</strong>
         <p>
-          This visualizer approximates station arrival order and the current alert-state
-          rules. It does not consume live data, predict market impact, estimate a reviewed
-          magnitude, or place trades.
+          Wavefronts use homogeneous 5.8 km/s P and 3.4 km/s S velocities with source-depth
+          geometry; station amplitudes remain illustrative. This system does not consume
+          live data, predict market impact, estimate a reviewed magnitude, or place trades.
         </p>
         <span>Prototype · not production-ready</span>
       </section>

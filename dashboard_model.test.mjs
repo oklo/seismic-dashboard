@@ -5,8 +5,10 @@ import {
   FEED_PROFILES,
   PRESETS,
   STATIONS,
+  WAVE_MODEL,
   haversineKm,
   modelEarthquake,
+  surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
 
 test("station inventory matches the eight-site detector profile", () => {
@@ -28,6 +30,31 @@ test("South Napa reference produces ordered watch and major revisions", () => {
   assert.ok(
     result.revisions[0].detectedAfterOriginS < result.revisions[1].detectedAfterOriginS,
   );
+  assert.ok(
+    result.stationResults.every(
+      (station) => station.arrivalAfterOriginS < station.strongMotionAfterOriginS,
+    ),
+  );
+});
+
+test("surface wavefront honors source depth and station travel geometry", () => {
+  const result = modelEarthquake(PRESETS.hayward, "direct");
+  const station = result.stationResults[0];
+
+  assert.equal(
+    surfaceIntersectionRadiusKm(
+      PRESETS.hayward.depthKm / WAVE_MODEL.pVelocityKmS,
+      WAVE_MODEL.pVelocityKmS,
+      PRESETS.hayward.depthKm,
+    ),
+    0,
+  );
+  const radiusAtArrival = surfaceIntersectionRadiusKm(
+    station.arrivalAfterOriginS,
+    WAVE_MODEL.pVelocityKmS,
+    PRESETS.hayward.depthKm,
+  );
+  assert.ok(Math.abs(radiusAtArrival - station.surfaceDistanceKm) < 1e-9);
 });
 
 test("small or distant inputs fail closed without network agreement", () => {

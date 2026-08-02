@@ -22,7 +22,11 @@ export const FEED_PROFILES = Object.freeze({
   stale: { label: "DEGRADED / STALE", sourceAgeS: 18.0, acknowledgementS: 0.18 },
 });
 
-const P_VELOCITY_KM_S = 5.8;
+export const WAVE_MODEL = Object.freeze({
+  pVelocityKmS: 5.8,
+  sVelocityKmS: 3.4,
+  shakingDurationS: 5.0,
+});
 const MIN_STATION_SPAN_KM = 20.0;
 const TRIGGER_PEAK_G = 0.00012;
 const MAJOR_MEDIAN_PEAK_G = 0.00075;
@@ -44,6 +48,15 @@ export function haversineKm(latitudeA, longitudeA, latitudeB, longitudeB) {
       Math.cos(toRadians(latitudeB)) *
       Math.sin(deltaLongitude / 2) ** 2;
   return 6371.0088 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function surfaceIntersectionRadiusKm(elapsedS, velocityKmS, depthKm) {
+  if (![elapsedS, velocityKmS, depthKm].every(Number.isFinite)) {
+    throw new TypeError("Wavefront inputs must be numbers.");
+  }
+  if (elapsedS <= 0 || velocityKmS <= 0 || depthKm < 0) return 0;
+  const traveledKm = elapsedS * velocityKmS;
+  return traveledKm <= depthKm ? 0 : Math.sqrt(traveledKm ** 2 - depthKm ** 2);
 }
 
 function estimatePeakAccelerationG(magnitude, hypocentralDistanceKm) {
@@ -139,7 +152,8 @@ export function modelEarthquake(input, profileName = "dart") {
       ...station,
       surfaceDistanceKm,
       hypocentralDistanceKm,
-      arrivalAfterOriginS: hypocentralDistanceKm / P_VELOCITY_KM_S,
+      arrivalAfterOriginS: hypocentralDistanceKm / WAVE_MODEL.pVelocityKmS,
+      strongMotionAfterOriginS: hypocentralDistanceKm / WAVE_MODEL.sVelocityKmS,
       peakAccelerationG,
       triggered: peakAccelerationG >= TRIGGER_PEAK_G,
     };
