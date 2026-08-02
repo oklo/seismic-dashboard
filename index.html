@@ -10,12 +10,6 @@
     <title>Quake Impact → Market Impact</title>
     <link rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111916'/%3E%3Cpath d='M3 16h7l3-10 5 20 3-10h8' fill='none' stroke='%23c9ff3d' stroke-width='3'/%3E%3C/svg%3E">
-    <script>
-      try {
-        const theme = localStorage.getItem("bay-chi-theme");
-        if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
-      } catch (_) {}
-    </script>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -27,31 +21,22 @@
       </a>
       <div class="topbar-meta">
         <span id="utc-clock">UTC --:--:--</span>
-        <button class="theme-toggle" id="theme-toggle" type="button"
-          aria-label="Switch to dark mode" aria-pressed="false">
-          <span class="theme-icon" aria-hidden="true">◐</span>
-          <span id="theme-label">Dark</span>
-        </button>
         <a href="https://github.com/oklo/seismic-dashboard">Source</a>
       </div>
     </header>
 
     <main>
       <section class="simulator-grid">
-        <section class="panel terminal-panel" aria-labelledby="terminal-heading">
-          <div class="terminal-bar">
-            <div class="window-lights" aria-hidden="true"><i></i><i></i><i></i></div>
-            <div>
-              <p class="panel-kicker">CHICAGO / ALERT RELAY</p>
-              <h2 id="terminal-heading">Trader alert terminal</h2>
-            </div>
-            <div class="relay-status" id="relay-status"><i></i> SIM RELAY READY</div>
+        <section class="panel terminal-panel" aria-label="Simulation output">
+          <div class="terminal-toolbar">
+            <span>Simulation output</span>
+            <div class="relay-status" id="relay-status">Ready</div>
           </div>
           <div class="terminal-screen" id="terminal-screen" role="log" aria-live="polite"
-            aria-label="Simulated Chicago trader alert output">
+            aria-label="Simulated authenticated alert output">
             <div class="terminal-line muted"><time>--:--:--.---</time><span>[BOOT]</span> BAY/CHI impact relay 0.3</div>
             <div class="terminal-line muted"><time>--:--:--.---</time><span>[MODEL]</span> scenario input · delivery path simulation</div>
-            <div class="terminal-prompt"><span>chi-alert~$</span><b class="cursor"></b></div>
+            <div class="terminal-prompt"><span>›</span><b class="cursor"></b></div>
           </div>
           <div class="terminal-footer">
             <span id="terminal-summary">Waiting for a synthetic origin.</span>
@@ -59,180 +44,181 @@
           </div>
         </section>
 
-        <aside class="panel controls-panel" aria-label="Earthquake scenario controls">
-          <form id="quake-form">
-            <label class="field field-wide">
-              <span>Earthquake</span>
-              <select id="preset" name="preset">
-                <option value="loma-prieta-1989">1989 Loma Prieta · Mw 6.9</option>
-                <option value="san-francisco-1906">1906 San Francisco · Mw 7.9</option>
-                <option value="hayward-1868">1868 Hayward · Mw 6.8 estimate</option>
-                <option value="south-napa">2014 South Napa · Mw 6.0</option>
-                <option value="san-francisco">San Francisco scenario · M 7.0</option>
-                <option value="hayward">Hayward scenario · M 6.8</option>
-                <option value="san-jose">San Jose scenario · M 6.5</option>
-                <option value="custom">Custom / map placement</option>
-              </select>
-            </label>
-
-            <div class="field-row">
-              <label class="field magnitude-field">
-                <span>Magnitude</span>
-                <div class="input-with-unit">
-                  <b>M</b>
-                  <input id="magnitude" name="magnitude" type="number" value="6.9"
-                    min="2.5" max="8.5" step="0.1" inputmode="decimal" required>
-                </div>
-              </label>
-              <label class="field">
-                <span>Depth</span>
-                <div class="input-with-unit">
-                  <input id="depth" name="depth" type="number" value="17.2"
-                    min="0" max="80" step="0.1" inputmode="decimal" required>
-                  <b>km</b>
-                </div>
-              </label>
-            </div>
-
-            <div class="field-row">
-              <label class="field">
-                <span>Latitude</span>
-                <input id="latitude" name="latitude" type="number" value="37.036"
-                  min="32" max="43" step="0.001" inputmode="decimal" required>
-              </label>
-              <label class="field">
-                <span>Longitude</span>
-                <input id="longitude" name="longitude" type="number" value="-121.880"
-                  min="-126" max="-114" step="0.001" inputmode="decimal" required>
-              </label>
-            </div>
-
-            <div class="field-row">
-              <label class="field">
-                <span>Data path</span>
-                <select id="feed-profile" name="feed-profile">
-                  <option value="dart">NCEDC DART · 3.2s</option>
-                  <option value="direct">Direct feed · 0.8s</option>
-                  <option value="stale">Stale · 18s / closed</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Playback</span>
-                <select id="playback-speed" name="playback-speed">
-                  <option value="1">1× real time</option>
-                  <option value="5">5× review</option>
-                  <option value="20">20× review</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="action-row">
-              <button class="strike-button" id="strike-button" type="submit">
-                <span class="strike-icon" aria-hidden="true">⌁</span>
-                <span>Run simulation</span>
-              </button>
-              <button class="reset-button" id="reset-button" type="button">Reset</button>
-            </div>
-            <p class="form-note" id="form-note">Click or drag the epicenter on the map.</p>
-          </form>
-        </aside>
-
         <section class="panel network-panel" aria-label="Bay Area shaking and population impact">
           <div class="impact-dashboard">
-            <div class="bay-map-panel">
-              <div class="map-subhead bay-subhead">
-                <span>FAULTS / POPULATION / MODELED MMI</span>
-                <span class="network-state" id="network-state"><i></i> Armed</span>
-                <div class="simulation-clock">
-                  <b id="simulation-clock">T+00.0s</b>
-                  <small id="simulation-rate">1× REAL TIME</small>
+            <div class="bay-column">
+              <div class="bay-map-panel">
+                <div class="network-map-stage">
+                  <svg id="network-map" viewBox="0 0 560 680" role="img"
+                    aria-labelledby="map-title map-description">
+                    <title id="map-title">Bay Area shaking, population, faults and stations</title>
+                    <desc id="map-description">
+                      Census population dots, USGS Quaternary fault traces, modeled
+                      Mercalli intensity, eight BK stations, and P and S wavefronts.
+                    </desc>
+                    <defs>
+                      <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+                        <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor"
+                          stroke-width="1"></path>
+                      </pattern>
+                      <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+                        <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+                        <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                      </filter>
+                    </defs>
+                    <rect class="map-grid" width="560" height="680" fill="url(#grid)"></rect>
+                    <g id="bay-geography"></g>
+                    <g id="impact-grid" aria-label="Modeled Modified Mercalli intensity field"></g>
+                    <g id="population-layer" aria-label="2020 Census population dot density"></g>
+                    <g id="population-impact-layer" aria-hidden="true"></g>
+                    <g id="fault-layer" aria-label="USGS Quaternary fault traces"></g>
+                    <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
+                      <path id="p-wavefront" class="wavefront p-wave"></path>
+                      <path id="s-wavefront" class="wavefront s-wave"></path>
+                    </g>
+                    <g id="station-layer"></g>
+                    <g id="epicenter-layer"></g>
+                  </svg>
+                  <div class="simulation-clock">
+                    <b id="simulation-clock">T+00.0s</b>
+                    <small id="simulation-rate">1× REAL TIME</small>
+                  </div>
+                </div>
+                <div class="map-data-strip">
+                  <div class="mmi-legend" aria-label="Modified Mercalli intensity colors">
+                    <span>MMI</span><i data-mmi="2">II</i><i data-mmi="4">IV</i>
+                    <i data-mmi="6">VI</i><i data-mmi="8">VIII</i><i data-mmi="10">X</i>
+                  </div>
+                  <div class="wave-readout" aria-label="Current modeled wavefront radii">
+                    <span><i class="p-key"></i>P <b id="p-radius">0 km</b></span>
+                    <span><i class="s-key"></i>S <b id="s-radius">0 km</b></span>
+                  </div>
                 </div>
               </div>
-              <div class="network-map-stage">
-                <svg id="network-map" viewBox="0 0 560 680" role="img"
-                  aria-labelledby="map-title map-description">
-                  <title id="map-title">Bay Area shaking, population, faults and stations</title>
-                  <desc id="map-description">
-                    Census population lights, USGS Quaternary fault traces, modeled
-                    Mercalli intensity, eight BK stations, and P and S wavefronts.
-                  </desc>
-                  <defs>
-                    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-                      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor"
-                        stroke-width="1"></path>
-                    </pattern>
-                    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
-                      <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
-                      <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
-                    </filter>
-                  </defs>
-                  <rect class="map-grid" width="560" height="680" fill="url(#grid)"></rect>
-                  <g id="bay-geography"></g>
-                  <g id="impact-grid" aria-label="Modeled Modified Mercalli intensity field"></g>
-                  <g id="population-layer" aria-label="2020 Census population dot density"></g>
-                  <g id="population-impact-layer" aria-hidden="true"></g>
-                  <g id="fault-layer" aria-label="USGS Quaternary fault traces"></g>
-                  <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
-                    <path id="p-wavefront" class="wavefront p-wave"></path>
-                    <path id="s-wavefront" class="wavefront s-wave"></path>
-                  </g>
-                  <g id="station-layer"></g>
-                  <g id="epicenter-layer"></g>
-                </svg>
-                <div class="map-placement-hint">Click or drag to place epicenter</div>
-                <div class="mmi-legend" aria-label="Modified Mercalli intensity colors">
-                  <span>MMI</span><i data-mmi="2">II</i><i data-mmi="4">IV</i>
-                  <i data-mmi="6">VI</i><i data-mmi="8">VIII</i><i data-mmi="10">X</i>
+
+              <div class="metric-strip">
+                <div class="metric">
+                  <span>Network</span>
+                  <strong id="metric-network">8 / 8</strong>
+                  <small>trigger sites</small>
                 </div>
-                <div class="wave-readout" aria-label="Current modeled wavefront radii">
-                  <span><i class="p-key"></i>P <b id="p-radius">0 km</b></span>
-                  <span><i class="s-key"></i>S <b id="s-radius">0 km</b></span>
+                <div class="metric">
+                  <span>Watch ETA</span>
+                  <strong id="metric-watch">—</strong>
+                  <small>after origin</small>
+                </div>
+                <div class="metric">
+                  <span>Major ETA</span>
+                  <strong id="metric-major">—</strong>
+                  <small>if threshold met</small>
+                </div>
+                <div class="metric">
+                  <span>Peak MMI</span>
+                  <strong id="metric-peak-mmi">—</strong>
+                  <small>point-source proxy</small>
+                </div>
+                <div class="metric">
+                  <span>Population ≥ VI</span>
+                  <strong id="metric-population-exposed">—</strong>
+                  <small>reached residents</small>
+                </div>
+                <div class="metric impact-metric">
+                  <span>Impact index</span>
+                  <strong id="metric-impact-index">—</strong>
+                  <small>accumulated proxy</small>
                 </div>
               </div>
             </div>
-            <aside class="station-section" aria-label="Station telemetry streams">
-              <div class="station-section-heading">
-                <span>STATION STREAMS</span>
-                <small>BK · HNZ</small>
-              </div>
-              <div class="station-grid" id="station-grid"></div>
+
+            <aside class="right-rail">
+              <section class="controls-panel" aria-label="Earthquake scenario controls">
+                <form id="quake-form">
+                  <label class="field field-wide">
+                    <span>Earthquake</span>
+                    <select id="preset" name="preset">
+                      <option value="loma-prieta-1989">1989 Loma Prieta · Mw 6.9</option>
+                      <option value="san-francisco-1906">1906 San Francisco · Mw 7.9</option>
+                      <option value="hayward-1868">1868 Hayward · Mw 6.8 estimate</option>
+                      <option value="south-napa">2014 South Napa · Mw 6.0</option>
+                      <option value="san-francisco">San Francisco scenario · M 7.0</option>
+                      <option value="hayward">Hayward scenario · M 6.8</option>
+                      <option value="san-jose">San Jose scenario · M 6.5</option>
+                      <option value="custom">Custom / map placement</option>
+                    </select>
+                  </label>
+
+                  <div class="field-row">
+                    <label class="field magnitude-field">
+                      <span>Magnitude</span>
+                      <div class="input-with-unit">
+                        <b>M</b>
+                        <input id="magnitude" name="magnitude" type="number" value="6.9"
+                          min="2.5" max="8.5" step="0.1" inputmode="decimal" required>
+                      </div>
+                    </label>
+                    <label class="field">
+                      <span>Depth</span>
+                      <div class="input-with-unit">
+                        <input id="depth" name="depth" type="number" value="17.2"
+                          min="0" max="80" step="0.1" inputmode="decimal" required>
+                        <b>km</b>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div class="field-row">
+                    <label class="field">
+                      <span>Latitude</span>
+                      <input id="latitude" name="latitude" type="number" value="37.036"
+                        min="32" max="43" step="0.001" inputmode="decimal" required>
+                    </label>
+                    <label class="field">
+                      <span>Longitude</span>
+                      <input id="longitude" name="longitude" type="number" value="-121.880"
+                        min="-126" max="-114" step="0.001" inputmode="decimal" required>
+                    </label>
+                  </div>
+
+                  <div class="field-row">
+                    <label class="field">
+                      <span>Data path</span>
+                      <select id="feed-profile" name="feed-profile">
+                        <option value="dart">NCEDC DART · 3.2s</option>
+                        <option value="direct">Direct feed · 0.8s</option>
+                        <option value="stale">Stale · 18s / closed</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Playback</span>
+                      <select id="playback-speed" name="playback-speed">
+                        <option value="1">1× real time</option>
+                        <option value="5">5× review</option>
+                        <option value="20">20× review</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div class="action-row">
+                    <button class="strike-button" id="strike-button" type="submit">
+                      <span class="strike-icon" aria-hidden="true">⌁</span>
+                      <span>Run simulation</span>
+                    </button>
+                    <button class="reset-button" id="reset-button" type="button">Reset</button>
+                  </div>
+                  <p class="form-note" id="form-note" aria-live="polite"></p>
+                </form>
+              </section>
+
+              <section class="station-section" aria-label="Station telemetry streams">
+                <div class="station-section-heading">
+                  <span>STATION STREAMS</span>
+                  <small>BK · HNZ</small>
+                </div>
+                <div class="station-grid" id="station-grid"></div>
+              </section>
             </aside>
           </div>
-
-          <div class="metric-strip">
-            <div class="metric">
-              <span>Network</span>
-              <strong id="metric-network">8 / 8</strong>
-              <small>trigger sites</small>
-            </div>
-            <div class="metric">
-              <span>Watch ETA</span>
-              <strong id="metric-watch">—</strong>
-              <small>after origin</small>
-            </div>
-            <div class="metric">
-              <span>Major ETA</span>
-              <strong id="metric-major">—</strong>
-              <small>if threshold met</small>
-            </div>
-            <div class="metric">
-              <span>Peak MMI</span>
-              <strong id="metric-peak-mmi">—</strong>
-              <small>point-source proxy</small>
-            </div>
-            <div class="metric">
-              <span>Population ≥ VI</span>
-              <strong id="metric-population-exposed">—</strong>
-              <small>modeled residents</small>
-            </div>
-            <div class="metric impact-metric">
-              <span>Impact index</span>
-              <strong id="metric-impact-index">—</strong>
-              <small>population × intensity</small>
-            </div>
-          </div>
         </section>
-
       </section>
     </main>
     <script type="module" src="app.mjs"></script>

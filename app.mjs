@@ -11,6 +11,8 @@ import {
 const SVG_NS = "http://www.w3.org/2000/svg";
 const EARTH_RADIUS_KM = 6371.0088;
 const IMPACT_GRID_SIZE = 14;
+const PROPAGATION_TIME_BIN_S = 0.35;
+const STATION_MMI_RISE_S = 2.4;
 const STATION_CALLOUT_OFFSETS = Object.freeze({
   PINL: { x: 10, y: -34 },
   BKS: { x: -76, y: -31 },
@@ -35,8 +37,6 @@ const elements = {
   reset: document.querySelector("#reset-button"),
   formNote: document.querySelector("#form-note"),
   clock: document.querySelector("#utc-clock"),
-  themeToggle: document.querySelector("#theme-toggle"),
-  themeLabel: document.querySelector("#theme-label"),
   networkMap: document.querySelector("#network-map"),
   bayGeography: document.querySelector("#bay-geography"),
   impactGrid: document.querySelector("#impact-grid"),
@@ -48,7 +48,6 @@ const elements = {
   pWave: document.querySelector("#p-wavefront"),
   sWave: document.querySelector("#s-wavefront"),
   stationGrid: document.querySelector("#station-grid"),
-  networkState: document.querySelector("#network-state"),
   simulationClock: document.querySelector("#simulation-clock"),
   simulationRate: document.querySelector("#simulation-rate"),
   pRadius: document.querySelector("#p-radius"),
@@ -69,6 +68,14 @@ let animationFrame = null;
 let eventTimer = null;
 let nextRunId = 0;
 let impactCells = [];
+let populationArrivalLayers = [];
+let populationImpactTimeline = [];
+let populationImpactSummary = null;
+let revealedImpactCellCount = 0;
+let revealedPopulationLayerCount = 0;
+let revealedPopulationCellCount = 0;
+let reachedPopulationMmi6Plus = 0;
+let reachedImpactMass = 0;
 let draggingEpicenter = false;
 let pendingPlacement = null;
 let placementFrame = null;
@@ -269,31 +276,124 @@ function formatPopulation(population) {
   }).format(population);
 }
 
+function sArrivalAfterOriginS(surfaceDistanceKm, depthKm) {
+  return Math.hypot(surfaceDistanceKm, depthKm) / WAVE_MODEL.sVelocityKmS;
+}
+
+function resetPropagationReveal() {
+  impactCells.forEach((cell) => {
+    cell.rect.style.opacity = "0";
+  });
+  populationArrivalLayers.forEach((layer) => {
+    layer.path.style.opacity = "0";
+  });
+  revealedImpactCellCount = 0;
+  revealedPopulationLayerCount = 0;
+  revealedPopulationCellCount = 0;
+  reachedPopulationMmi6Plus = 0;
+  reachedImpactMass = 0;
+  elements.metricPopulationExposed.textContent = "0";
+  elements.metricImpactIndex.textContent = "0.0";
+}
+
+function currentPopulationImpact() {
+  const populationTotal = populationImpactSummary?.populationTotal ?? 0;
+  return {
+    populationMmi6Plus: reachedPopulationMmi6Plus,
+    impactIndex:
+      populationTotal > 0
+        ? Math.min(100, (reachedImpactMass / (populationTotal * 49)) * 100)
+        : 0,
+  };
+}
+
+function updatePropagationReveal(elapsedS) {
+  while (
+    revealedImpactCellCount < impactCells.length &&
+    impactCells[revealedImpactCellCount].arrivalS <= elapsedS
+  ) {
+    const cell = impactCells[revealedImpactCellCount];
+    cell.rect.style.opacity = cell.opacity;
+    revealedImpactCellCount += 1;
+  }
+  while (
+    revealedPopulationLayerCount < populationArrivalLayers.length &&
+    populationArrivalLayers[revealedPopulationLayerCount].arrivalS <= elapsedS
+  ) {
+    populationArrivalLayers[revealedPopulationLayerCount].path.style.opacity = "0.9";
+    revealedPopulationLayerCount += 1;
+  }
+  const startingPopulationCellCount = revealedPopulationCellCount;
+  while (
+    revealedPopulationCellCount < populationImpactTimeline.length &&
+    populationImpactTimeline[revealedPopulationCellCount].arrivalS <= elapsedS
+  ) {
+    const cell = populationImpactTimeline[revealedPopulationCellCount];
+    if (cell.intensity >= 6) reachedPopulationMmi6Plus += cell.population;
+    reachedImpactMass += Math.max(0, cell.intensity - 3) ** 2 * cell.population;
+    revealedPopulationCellCount += 1;
+  }
+  if (revealedPopulationCellCount !== startingPopulationCellCount) {
+    const impact = currentPopulationImpact();
+    elements.metricPopulationExposed.textContent = formatPopulation(
+      impact.populationMmi6Plus,
+    );
+    elements.metricImpactIndex.textContent = impact.impactIndex.toFixed(1);
+  }
+}
+
 function updateImpact(input) {
   impactCells.forEach((cell) => {
-    const { intensity } = estimateMercalliAtLocation(input, cell.latitude, cell.longitude);
+    const { intensity, surfaceDistanceKm } = estimateMercalliAtLocation(
+      input,
+      cell.latitude,
+      cell.longitude,
+    );
     cell.rect.style.fill = mmiColor(intensity);
-    cell.rect.style.opacity = intensity < 2 ? "0" : String(Math.min(0.36, 0.06 + intensity * 0.028));
+    cell.arrivalS = sArrivalAfterOriginS(surfaceDistanceKm, input.depthKm);
+    cell.opacity = intensity < 2 ? "0" : String(Math.min(0.31, 0.035 + intensity * 0.026));
   });
+  impactCells.sort((a, b) => a.arrivalS - b.arrivalS);
 
-  const impactGroups = Array.from({ length: 7 }, () => []);
-  CALIFORNIA_MAP_DATA.bay.populationCells.forEach(([x, y]) => {
+  const arrivalGroups = new Map();
+  populationImpactTimeline = [];
+  CALIFORNIA_MAP_DATA.bay.populationCells.forEach(([x, y, population]) => {
     const location = unprojectPoint(CALIFORNIA_MAP_DATA.bay, x, y);
-    const { intensity } = estimateMercalliAtLocation(
+    const { intensity, surfaceDistanceKm } = estimateMercalliAtLocation(
       input,
       location.latitude,
       location.longitude,
     );
-    const band = Math.max(4, Math.min(10, Math.floor(intensity)));
-    if (intensity >= 4) impactGroups[band - 4].push([x, y]);
+    const arrivalS = sArrivalAfterOriginS(surfaceDistanceKm, input.depthKm);
+    populationImpactTimeline.push({
+      arrivalS,
+      intensity,
+      population: Math.max(0, Number(population)),
+    });
+    if (intensity < 2) return;
+    const mmiBand = Math.max(2, Math.min(10, Math.floor(intensity)));
+    const arrivalBin = Math.floor(arrivalS / PROPAGATION_TIME_BIN_S);
+    const key = `${arrivalBin}:${mmiBand}`;
+    const group = arrivalGroups.get(key) ?? { arrivalBin, mmiBand, points: [] };
+    group.points.push([x, y]);
+    arrivalGroups.set(key, group);
   });
+  populationArrivalLayers = [...arrivalGroups.values()]
+    .map((group) => {
+      const path = svgElement("path", {
+        class: "population-impact",
+        d: pointPath(group.points),
+      });
+      path.style.stroke = mmiColor(group.mmiBand);
+      return {
+        arrivalS: group.arrivalBin * PROPAGATION_TIME_BIN_S,
+        path,
+      };
+    })
+    .sort((a, b) => a.arrivalS - b.arrivalS);
+  populationImpactTimeline.sort((a, b) => a.arrivalS - b.arrivalS);
   elements.populationImpactLayer.replaceChildren(
-    ...impactGroups.map((points, index) =>
-      svgElement("path", {
-        class: `population-impact mmi-${index + 4}`,
-        d: pointPath(points),
-      }),
-    ),
+    ...populationArrivalLayers.map((layer) => layer.path),
   );
 
   const impact = modelPopulationImpact(
@@ -301,9 +401,9 @@ function updateImpact(input) {
     CALIFORNIA_MAP_DATA.bay.populationCells,
     CALIFORNIA_MAP_DATA.bay.projection,
   );
+  populationImpactSummary = impact;
+  resetPropagationReveal();
   elements.metricPeakMmi.textContent = `${romanMmi(impact.maximumMmi)} / ${impact.maximumMmi.toFixed(1)}`;
-  elements.metricPopulationExposed.textContent = formatPopulation(impact.populationMmi6Plus);
-  elements.metricImpactIndex.textContent = impact.impactIndex.toFixed(1);
   return impact;
 }
 
@@ -338,7 +438,7 @@ function resetTerminal() {
   const prompt = document.createElement("div");
   prompt.className = "terminal-prompt";
   const promptText = document.createElement("span");
-  promptText.textContent = "chi-alert~$";
+  promptText.textContent = "›";
   const cursor = document.createElement("b");
   cursor.className = "cursor";
   prompt.append(promptText, cursor);
@@ -391,7 +491,7 @@ function markerGroup(station, map, input) {
     class: "station-marker phase-wait",
     transform: `translate(${point.x} ${point.y})`,
     "data-station": station.code,
-    "data-mmi": impact.intensity.toFixed(1),
+    "data-final-mmi": impact.intensity.toFixed(3),
     role: "img",
     tabindex: 0,
     "aria-label": `${station.id}, waiting for wave arrival`,
@@ -419,7 +519,7 @@ function markerGroup(station, map, input) {
     x: offset.x + 5,
     y: offset.y + 19,
   });
-  reading.textContent = `MMI ${impact.intensity.toFixed(1)} · WAIT`;
+  reading.textContent = "MMI — · WAIT";
   group.append(label, reading);
   return group;
 }
@@ -454,6 +554,7 @@ function stationCard(station, input) {
   const values = document.createElement("div");
   values.className = "station-values";
   const impact = estimateMercalliAtLocation(input, station.latitude, station.longitude);
+  card.dataset.finalMmi = impact.intensity.toFixed(3);
   const entries = [
     ["DIST", `${station.surfaceDistanceKm.toFixed(1)} km`, "distance"],
     [
@@ -461,7 +562,7 @@ function stationCard(station, input) {
       `${station.arrivalAfterOriginS.toFixed(1)} / ${station.strongMotionAfterOriginS.toFixed(1)}s`,
       "arrivals",
     ],
-    ["MMI", impact.intensity.toFixed(1), "mmi"],
+    ["MMI", "—", "mmi"],
     ["PGA", `${impact.pgaG.toFixed(3)} g`, "peak"],
   ];
   entries.forEach(([label, value, key]) => {
@@ -522,6 +623,14 @@ function phaseLabel(phase, station, elapsedS) {
   return "BELOW GATE";
 }
 
+function observedStationMmi(station, finalMmi, elapsedS) {
+  const shakingElapsedS = elapsedS - station.strongMotionAfterOriginS;
+  if (shakingElapsedS < 0) return null;
+  const progress = Math.min(1, shakingElapsedS / STATION_MMI_RISE_S);
+  const easedProgress = 1 - (1 - progress) ** 3;
+  return 1 + (finalMmi - 1) * easedProgress;
+}
+
 function waveformPath(station, elapsedS) {
   const width = 120;
   const middle = 14;
@@ -553,16 +662,29 @@ function updateStations(result, elapsedS, associatedStations) {
     const phase = phaseAt(station, elapsedS);
     const label = phaseLabel(phase, station, elapsedS);
     document.querySelectorAll(`[data-station="${station.code}"]`).forEach((node) => {
+      const finalMmi = Number.parseFloat(node.dataset.finalMmi);
+      const observedMmi = observedStationMmi(station, finalMmi, elapsedS);
+      const observedMmiLabel = observedMmi === null ? "—" : observedMmi.toFixed(1);
+      const stationColor = observedMmi === null ? "" : mmiColor(observedMmi);
       ["wait", "p-pick", "p-wave", "shaking", "recorded", "below-gate"].forEach(
         (value) => node.classList.remove(`phase-${value}`),
       );
       node.classList.add(`phase-${phase}`);
       node.classList.toggle("associated", associatedStations.has(station.id));
+      if (stationColor) node.style.setProperty("--station-mmi-color", stationColor);
+      else node.style.removeProperty("--station-mmi-color");
       node.setAttribute("aria-label", `${station.id}, ${label.toLowerCase()}`);
       const state = node.querySelector(".station-state");
       if (state) state.textContent = associatedStations.has(station.id) ? "ASSOCIATED" : label;
       const markerReading = node.querySelector(".marker-reading");
-      if (markerReading) markerReading.textContent = `MMI ${node.dataset.mmi} · ${label}`;
+      if (markerReading) markerReading.textContent = `MMI ${observedMmiLabel} · ${label}`;
+      const mmiValue = node.querySelector('[data-value="mmi"]');
+      if (mmiValue) mmiValue.textContent = observedMmiLabel;
+      const stationCore = node.querySelector(".station-core");
+      if (stationCore) {
+        stationCore.style.fill = stationColor;
+        stationCore.style.stroke = stationColor;
+      }
       const trace = node.querySelector(".trace-signal");
       if (trace) trace.setAttribute("d", waveformPath(station, elapsedS));
     });
@@ -739,14 +861,15 @@ function dispatchTimelineEvent(state, event) {
         timestamp,
       );
       elements.relayStatus.className = "relay-status blocked";
-      elements.relayStatus.innerHTML = "<i></i> FAIL CLOSED / STALE";
+      elements.relayStatus.textContent = "Fail closed / stale";
       elements.terminalSummary.textContent = "No trader alert delivered: freshness gate failed.";
       return;
     }
+    updatePropagationReveal(event.at);
     terminalLine("RX", `${wireId} · signature verified · alert ID matched`, "success", timestamp);
-    alertCard(revision, state.eventId, state.impact);
+    alertCard(revision, state.eventId, currentPopulationImpact());
     elements.relayStatus.className = "relay-status alerting";
-    elements.relayStatus.innerHTML = "<i></i> AUTHENTICATED ALERT";
+    elements.relayStatus.textContent = "Authenticated alert";
     elements.terminalSummary.textContent = `Latest: ${revision.classification.replaceAll("_", " ")} · revision ${revision.revision}.`;
     return;
   }
@@ -766,9 +889,8 @@ function dispatchTimelineEvent(state, event) {
       ? "origin outside Bay Area association grid"
       : "insufficient independent station diversity";
   terminalLine("CLOSED", `No alert: ${reason}.`, "danger", timestamp);
-  elements.networkState.innerHTML = "<i></i> No association";
   elements.relayStatus.className = "relay-status blocked";
-  elements.relayStatus.innerHTML = "<i></i> NO DELIVERY";
+  elements.relayStatus.textContent = "No delivery";
   elements.terminalSummary.textContent = `Fail closed: ${reason}.`;
 }
 
@@ -786,7 +908,8 @@ function simulationFinishTime(result, timeline) {
     ),
   );
   const latestEvent = timeline.length ? timeline.at(-1).at + 0.6 : 0;
-  return Math.max(latestShaking, latestEvent);
+  const latestMapArrival = impactCells.length ? impactCells.at(-1).arrivalS + 0.5 : 0;
+  return Math.max(latestShaking, latestEvent, latestMapArrival);
 }
 
 function elapsedSimulationSeconds(state, now = performance.now()) {
@@ -823,16 +946,16 @@ function renderSimulationFrame(runId) {
   elements.simulationClock.textContent = `T+${elapsedS.toFixed(1).padStart(4, "0")}s`;
 
   updateWavefronts(state.input, elapsedS);
+  updatePropagationReveal(elapsedS);
   if (now - state.lastStationRenderMs >= 45) {
     updateStations(state.result, elapsedS, state.associatedStations);
     state.lastStationRenderMs = now;
   }
 
   if (elapsedS >= state.finishAtS) {
+    updatePropagationReveal(state.finishAtS);
+    updateStations(state.result, state.finishAtS, state.associatedStations);
     setFormLocked(false);
-    if (state.result.revisions.length) {
-      elements.networkState.innerHTML = "<i></i> Simulation complete";
-    }
     elements.simulationClock.textContent = `T+${state.finishAtS.toFixed(1)}s`;
     if (eventTimer !== null) window.clearTimeout(eventTimer);
     eventTimer = null;
@@ -872,7 +995,7 @@ function updatePreview() {
     clearWavefronts();
     elements.simulationClock.textContent = "T+00.0s";
     if (result.revisions.length) {
-      elements.formNote.textContent = "Click or drag the epicenter on the map.";
+      elements.formNote.textContent = "";
     } else if (result.outcome === "outside_association_grid") {
       elements.formNote.textContent = "This origin is outside the Bay Area association grid.";
     } else {
@@ -914,9 +1037,8 @@ function runSimulation(event) {
   };
 
   setFormLocked(true);
-  elements.networkState.innerHTML = "<i></i> RUNNING";
   elements.relayStatus.className = "relay-status";
-  elements.relayStatus.innerHTML = "<i></i> WAITING FOR ASSOCIATION";
+  elements.relayStatus.textContent = "Waiting for association";
   elements.terminalSummary.textContent = `Synthetic M${input.magnitude.toFixed(1)} origin in progress.`;
   elements.simulationRate.textContent = `${speed}× ${speed === 1 ? "REAL TIME" : "REVIEW SPEED"}`;
   drawEpicenters(input, true);
@@ -946,31 +1068,12 @@ function runSimulation(event) {
 function resetSimulation() {
   cancelSimulation();
   elements.relayStatus.className = "relay-status";
-  elements.relayStatus.innerHTML = "<i></i> SIM RELAY READY";
-  elements.networkState.innerHTML = "<i></i> ARMED";
+  elements.relayStatus.textContent = "Ready";
   elements.terminalSummary.textContent = "Waiting for a synthetic origin.";
   resetTerminal();
   updatePreview();
 }
 
-function setTheme(theme, persist = true) {
-  document.documentElement.dataset.theme = theme;
-  const dark = theme === "dark";
-  elements.themeToggle.setAttribute("aria-pressed", String(dark));
-  elements.themeToggle.setAttribute("aria-label", `Switch to ${dark ? "light" : "dark"} mode`);
-  elements.themeLabel.textContent = dark ? "Light" : "Dark";
-  if (persist) {
-    try {
-      localStorage.setItem("bay-chi-theme", theme);
-    } catch (_) {
-      // Storage can be disabled without affecting the simulator.
-    }
-  }
-}
-
-elements.themeToggle.addEventListener("click", () => {
-  setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
-});
 elements.preset.addEventListener("change", () => {
   const preset = PRESETS[elements.preset.value];
   if (preset) {
@@ -1016,13 +1119,6 @@ function updateClock() {
 
 drawStaticMaps();
 const query = new URLSearchParams(window.location.search);
-const queryTheme = query.get("theme");
-setTheme(
-  queryTheme === "dark" || queryTheme === "light"
-    ? queryTheme
-    : document.documentElement.dataset.theme || "light",
-  false,
-);
 if (["1", "5", "20"].includes(query.get("speed"))) {
   elements.speed.value = query.get("speed");
 }

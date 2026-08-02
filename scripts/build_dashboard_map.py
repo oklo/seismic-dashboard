@@ -30,7 +30,7 @@ SOURCE_LABEL = (
     "USGS Quaternary Fault and Fold Database"
 )
 CALIFORNIA_BOUNDS = (-124.65, 32.3, -114.0, 42.1)
-BAY_BOUNDS = (-122.82, 36.98, -121.50, 38.45)
+BAY_BOUNDS = (-123.15, 36.95, -121.45, 38.55)
 FAULT_NAMES = (
     "San Andreas fault zone",
     "San Gregorio fault zone",
