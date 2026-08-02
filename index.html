@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Browser-only training simulator for the Economic Seismology Bay Area alert path."
+    >
+    <title>Bay / Chi — Earthquake Alert Simulator</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="wordmark" href="./" aria-label="Bay Chi simulator home">
+        <span class="wordmark-mark" aria-hidden="true"></span>
+        <span>BAY / CHI</span>
+      </a>
+      <div class="mode-pill"><span></span> Training mode · synthetic data</div>
+      <div class="topbar-meta">
+        <span id="utc-clock">UTC --:--:--</span>
+        <a href="https://github.com/oklo/seismic-dashboard">Source</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">ECONOMIC SEISMOLOGY / SIMULATOR 01</p>
+          <h1 id="page-title">Strike the Bay.<br><em>Watch Chicago react.</em></h1>
+        </div>
+        <p class="intro-copy">
+          Configure a synthetic earthquake, then follow the modeled signal from
+          professional Bay Area stations to an authenticated trader alert. Nothing on
+          this page uses live waveform data or sends a real alert.
+        </p>
+      </section>
+
+      <section class="simulator-grid">
+        <aside class="panel controls-panel" aria-labelledby="scenario-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">01 / ORIGIN</p>
+              <h2 id="scenario-heading">Define the event</h2>
+            </div>
+            <span class="status-tag">SIM</span>
+          </div>
+
+          <form id="quake-form">
+            <label class="field field-wide">
+              <span>Location preset</span>
+              <select id="preset" name="preset">
+                <option value="south-napa">South Napa · 2014 reference</option>
+                <option value="san-francisco">San Francisco</option>
+                <option value="hayward">Hayward Fault</option>
+                <option value="san-jose">San Jose</option>
+                <option value="custom">Custom coordinates</option>
+              </select>
+            </label>
+
+            <div class="field-row">
+              <label class="field magnitude-field">
+                <span>Magnitude</span>
+                <div class="input-with-unit">
+                  <b>M</b>
+                  <input id="magnitude" name="magnitude" type="number" value="6.0"
+                    min="2.5" max="8.5" step="0.1" inputmode="decimal" required>
+                </div>
+              </label>
+              <label class="field">
+                <span>Depth</span>
+                <div class="input-with-unit">
+                  <input id="depth" name="depth" type="number" value="11.1"
+                    min="0" max="80" step="0.1" inputmode="decimal" required>
+                  <b>km</b>
+                </div>
+              </label>
+            </div>
+
+            <div class="field-row">
+              <label class="field">
+                <span>Latitude</span>
+                <input id="latitude" name="latitude" type="number" value="38.215"
+                  min="32" max="43" step="0.001" inputmode="decimal" required>
+              </label>
+              <label class="field">
+                <span>Longitude</span>
+                <input id="longitude" name="longitude" type="number" value="-122.312"
+                  min="-126" max="-114" step="0.001" inputmode="decimal" required>
+              </label>
+            </div>
+
+            <label class="field field-wide">
+              <span>Data path</span>
+              <select id="feed-profile" name="feed-profile">
+                <option value="dart">Public NCEDC DART · 3.2s age</option>
+                <option value="direct">Modeled direct feed · 0.8s age</option>
+                <option value="stale">Degraded feed · 18s age / fail closed</option>
+              </select>
+            </label>
+
+            <label class="field field-wide">
+              <span>Playback</span>
+              <select id="playback-speed" name="playback-speed">
+                <option value="5">5× · default</option>
+                <option value="1">1× · modeled wall clock</option>
+                <option value="20">20× · rapid review</option>
+              </select>
+            </label>
+
+            <div class="action-row">
+              <button class="strike-button" id="strike-button" type="submit">
+                <span class="strike-icon" aria-hidden="true">⌁</span>
+                <span>Strike</span>
+                <small>Run simulation</small>
+              </button>
+              <button class="reset-button" id="reset-button" type="button">Reset</button>
+            </div>
+            <p class="form-note" id="form-note">
+              The model is illustrative. It is not a magnitude or ground-motion forecast.
+            </p>
+          </form>
+        </aside>
+
+        <section class="panel network-panel" aria-labelledby="network-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">02 / CALIFORNIA</p>
+              <h2 id="network-heading">Bay station network</h2>
+            </div>
+            <span class="network-state" id="network-state"><i></i> Armed for simulation</span>
+          </div>
+
+          <div class="map-wrap">
+            <svg id="network-map" viewBox="0 0 720 500" role="img"
+              aria-labelledby="map-title map-description">
+              <title id="map-title">Bay Area seismic station network</title>
+              <desc id="map-description">
+                A schematic map showing eight professional BK stations and the configured
+                synthetic epicenter.
+              </desc>
+              <defs>
+                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor"
+                    stroke-width="1"></path>
+                </pattern>
+                <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+                  <feGaussianBlur stdDeviation="5" result="blur"></feGaussianBlur>
+                  <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                </filter>
+              </defs>
+              <rect class="map-grid" width="720" height="500" fill="url(#grid)"></rect>
+              <path class="coast" d="M92,8 C116,87 131,127 174,160 C212,190 207,227 253,252 C278,266 286,298 307,315 C338,339 369,340 381,374 C392,404 425,425 476,492"></path>
+              <path class="bay" d="M184,153 C222,163 230,183 220,207 C209,232 230,257 259,268 C278,275 293,293 294,318 C259,310 236,296 220,274 C199,245 179,226 167,201 C157,179 163,162 184,153Z"></path>
+              <g id="range-rings" aria-hidden="true"></g>
+              <g id="station-layer"></g>
+              <g id="epicenter-layer"></g>
+              <text class="map-label" x="30" y="42">38.5° N</text>
+              <text class="map-label" x="30" y="475">37.0° N</text>
+              <text class="map-label map-label-right" x="690" y="475">121.2° W</text>
+            </svg>
+            <div class="map-legend">
+              <span><i class="legend-dot station-dot"></i> BK HNZ station</span>
+              <span><i class="legend-dot trigger-dot"></i> Trigger received</span>
+              <span><i class="legend-cross">×</i> Synthetic origin</span>
+            </div>
+          </div>
+
+          <div class="metric-strip">
+            <div class="metric">
+              <span>Network</span>
+              <strong id="metric-network">8 / 8</strong>
+              <small>modeled trigger sites</small>
+            </div>
+            <div class="metric">
+              <span>Watch ETA</span>
+              <strong id="metric-watch">—</strong>
+              <small>after origin</small>
+            </div>
+            <div class="metric">
+              <span>Major ETA</span>
+              <strong id="metric-major">—</strong>
+              <small>if threshold met</small>
+            </div>
+            <div class="metric">
+              <span>Source age</span>
+              <strong id="metric-source-age">3.2s</strong>
+              <small>modeled input</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel terminal-panel" aria-labelledby="terminal-heading">
+          <div class="terminal-bar">
+            <div class="window-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div>
+              <p class="panel-kicker">03 / CHICAGO</p>
+              <h2 id="terminal-heading">Trader alert terminal</h2>
+            </div>
+            <div class="relay-status" id="relay-status"><i></i> SIM RELAY READY</div>
+          </div>
+          <div class="terminal-screen" id="terminal-screen" role="log" aria-live="polite"
+            aria-label="Simulated Chicago trader alert output">
+            <div class="terminal-line muted"><time>--:--:--.---</time><span>[BOOT]</span> BAY/CHI training relay 0.1</div>
+            <div class="terminal-line muted"><time>--:--:--.---</time><span>[SAFE]</span> synthetic input only · external delivery disabled</div>
+            <div class="terminal-prompt"><span>chi-alert~$</span><b class="cursor"></b></div>
+          </div>
+          <div class="terminal-footer">
+            <span id="terminal-summary">Waiting for a synthetic origin.</span>
+            <span>AUTH <b>HMAC-SHA256 / SIMULATED</b></span>
+          </div>
+        </section>
+      </section>
+
+      <section class="safety-band" aria-label="Simulator limitations">
+        <strong>TRAINING SYSTEM</strong>
+        <p>
+          This visualizer approximates station arrival order and the current alert-state
+          rules. It does not consume live data, predict market impact, estimate a reviewed
+          magnitude, or place trades.
+        </p>
+        <span>Prototype · not production-ready</span>
+      </section>
+    </main>
+
+    <footer>
+      <span>Economic Seismology / Bay Area → Chicago</span>
+      <span>Professional data path · human decision path</span>
+    </footer>
+    <script type="module" src="app.mjs"></script>
+  </body>
+</html>
