@@ -41,7 +41,7 @@
       <section class="intro" aria-labelledby="page-title">
         <div>
           <p class="eyebrow">ECONOMIC SEISMOLOGY / SIMULATOR 01</p>
-          <h1 id="page-title">Strike the Bay.<br><em>Watch Chicago react.</em></h1>
+          <h1 id="page-title">Strike the Bay. <em>Watch Chicago react.</em></h1>
         </div>
         <p class="intro-copy">
           Configure a synthetic earthquake, then follow the modeled signal from
@@ -137,6 +137,27 @@
           </form>
         </aside>
 
+        <section class="panel terminal-panel" aria-labelledby="terminal-heading">
+          <div class="terminal-bar">
+            <div class="window-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div>
+              <p class="panel-kicker">03 / CHICAGO</p>
+              <h2 id="terminal-heading">Trader alert terminal</h2>
+            </div>
+            <div class="relay-status" id="relay-status"><i></i> SIM RELAY READY</div>
+          </div>
+          <div class="terminal-screen" id="terminal-screen" role="log" aria-live="polite"
+            aria-label="Simulated Chicago trader alert output">
+            <div class="terminal-line muted"><time>--:--:--.---</time><span>[BOOT]</span> BAY/CHI training relay 0.1</div>
+            <div class="terminal-line muted"><time>--:--:--.---</time><span>[SAFE]</span> synthetic input only · external delivery disabled</div>
+            <div class="terminal-prompt"><span>chi-alert~$</span><b class="cursor"></b></div>
+          </div>
+          <div class="terminal-footer">
+            <span id="terminal-summary">Waiting for a synthetic origin.</span>
+            <span>AUTH <b>HMAC-SHA256 / SIMULATED</b></span>
+          </div>
+        </section>
+
         <section class="panel network-panel" aria-labelledby="network-heading">
           <div class="panel-heading">
             <div>
@@ -193,9 +214,24 @@
                     <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
                     <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
                   </filter>
+                  <radialGradient id="census-flashlight-gradient">
+                    <stop offset="0%" stop-color="white" stop-opacity="1"></stop>
+                    <stop offset="68%" stop-color="white" stop-opacity="0.96"></stop>
+                    <stop offset="100%" stop-color="white" stop-opacity="0"></stop>
+                  </radialGradient>
+                  <mask id="census-flashlight-mask" maskUnits="userSpaceOnUse"
+                    x="0" y="0" width="720" height="520">
+                    <rect width="720" height="520" fill="black"></rect>
+                    <circle id="census-flashlight-lens" cx="360" cy="260" r="112"
+                      fill="url(#census-flashlight-gradient)"></circle>
+                  </mask>
                 </defs>
                 <rect class="map-grid" width="720" height="520" fill="url(#grid)"></rect>
                 <g id="bay-geography"></g>
+                <g id="bay-census-flashlight" class="census-flashlight"
+                  mask="url(#census-flashlight-mask)"></g>
+                <circle id="census-flashlight-ring" class="census-flashlight-ring"
+                  cx="360" cy="260" r="112"></circle>
                 <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
                   <path id="p-wavefront" class="wavefront p-wave"></path>
                   <path id="s-wavefront" class="wavefront s-wave"></path>
@@ -203,6 +239,7 @@
                 <g id="station-layer"></g>
                 <g id="epicenter-layer"></g>
               </svg>
+              <div class="flashlight-hint"><i></i>Census lens · move pointer over map</div>
               <div class="wave-readout" aria-label="Current modeled wavefront radii">
                 <span><i class="p-key"></i>P · 5.8 km/s <b id="p-radius">0 km</b></span>
                 <span><i class="s-key"></i>S · 3.4 km/s <b id="s-radius">0 km</b></span>
@@ -243,26 +280,6 @@
           </div>
         </section>
 
-        <section class="panel terminal-panel" aria-labelledby="terminal-heading">
-          <div class="terminal-bar">
-            <div class="window-lights" aria-hidden="true"><i></i><i></i><i></i></div>
-            <div>
-              <p class="panel-kicker">03 / CHICAGO</p>
-              <h2 id="terminal-heading">Trader alert terminal</h2>
-            </div>
-            <div class="relay-status" id="relay-status"><i></i> SIM RELAY READY</div>
-          </div>
-          <div class="terminal-screen" id="terminal-screen" role="log" aria-live="polite"
-            aria-label="Simulated Chicago trader alert output">
-            <div class="terminal-line muted"><time>--:--:--.---</time><span>[BOOT]</span> BAY/CHI training relay 0.1</div>
-            <div class="terminal-line muted"><time>--:--:--.---</time><span>[SAFE]</span> synthetic input only · external delivery disabled</div>
-            <div class="terminal-prompt"><span>chi-alert~$</span><b class="cursor"></b></div>
-          </div>
-          <div class="terminal-footer">
-            <span id="terminal-summary">Waiting for a synthetic origin.</span>
-            <span>AUTH <b>HMAC-SHA256 / SIMULATED</b></span>
-          </div>
-        </section>
       </section>
 
       <section class="safety-band" aria-label="Simulator limitations">

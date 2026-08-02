@@ -7,10 +7,14 @@ Choose a synthetic earthquake and data-source profile, press **Strike**, and wat
 modeled station triggers become authenticated `watch` and `major_suspected`
 revisions in a simple Chicago trader terminal.
 
-The second iteration adds:
+The current dashboard includes:
 
 - Light mode by default with a persistent dark-mode toggle.
+- A compact laptop-demo layout with the dark Chicago terminal directly beneath
+  the event controls.
 - A local vector map of California and all 58 counties, with a detailed Bay inset.
+- A pointer-following Census detail lens that reveals stronger county boundaries
+  and labels without obscuring station or wavefront telemetry.
 - Depth-aware geodesic P- and S-wave surface intersections driven from one
   monotonic simulation clock.
 - Real-time playback by default, with accelerated review modes.

@@ -194,6 +194,10 @@ def _map_data(
             {
                 "geoid": properties["GEOID"],
                 "name": properties["NAME"],
+                "center": {
+                    "latitude": float(properties["CENTLAT"]),
+                    "longitude": float(properties["CENTLON"]),
+                },
                 "path": _path(geometry, projection, tolerance),
             }
         )
@@ -206,7 +210,7 @@ def _map_data(
 
 def build(output: Path) -> None:
     state_collection = _query(STATE_URL, "GEOID,NAME")
-    county_collection = _query(COUNTY_URL, "GEOID,NAME")
+    county_collection = _query(COUNTY_URL, "GEOID,NAME,CENTLAT,CENTLON")
     state = state_collection["features"][0]
     counties = county_collection["features"]
     california = _map_data(

@@ -38,7 +38,12 @@ const elements = {
   californiaBayWindow: document.querySelector("#california-bay-window"),
   californiaPWave: document.querySelector("#california-p-wave"),
   californiaSWave: document.querySelector("#california-s-wave"),
+  networkMap: document.querySelector("#network-map"),
   bayGeography: document.querySelector("#bay-geography"),
+  bayCensusFlashlight: document.querySelector("#bay-census-flashlight"),
+  censusFlashlightLens: document.querySelector("#census-flashlight-lens"),
+  censusFlashlightRing: document.querySelector("#census-flashlight-ring"),
+  flashlightHint: document.querySelector(".flashlight-hint"),
   stationLayer: document.querySelector("#station-layer"),
   epicenterLayer: document.querySelector("#epicenter-layer"),
   pWave: document.querySelector("#p-wavefront"),
@@ -122,7 +127,50 @@ function drawStaticMaps() {
     "california",
   );
   drawGeography(elements.bayGeography, CALIFORNIA_MAP_DATA.bay, "bay");
+  drawGeography(
+    elements.bayCensusFlashlight,
+    CALIFORNIA_MAP_DATA.bay,
+    "census-flashlight",
+  );
+  CALIFORNIA_MAP_DATA.bay.counties.forEach((county) => {
+    const point = projectPoint(
+      CALIFORNIA_MAP_DATA.bay,
+      county.center.latitude,
+      county.center.longitude,
+    );
+    const label = svgElement("text", {
+      class: "census-county-label",
+      x: point.x,
+      y: point.y,
+      "text-anchor": "middle",
+    });
+    label.textContent = county.name.replace(" County", "");
+    elements.bayCensusFlashlight.append(label);
+  });
   drawBayWindow();
+}
+
+function flashlightPoint(event) {
+  const point = elements.networkMap.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  const matrix = elements.networkMap.getScreenCTM();
+  return matrix ? point.matrixTransform(matrix.inverse()) : { x: 360, y: 260 };
+}
+
+function setFlashlightActive(active) {
+  elements.bayCensusFlashlight.classList.toggle("active", active);
+  elements.censusFlashlightRing.classList.toggle("active", active);
+  elements.flashlightHint.classList.toggle("active", active);
+}
+
+function moveFlashlight(event) {
+  const point = flashlightPoint(event);
+  elements.censusFlashlightLens.setAttribute("cx", point.x.toFixed(1));
+  elements.censusFlashlightLens.setAttribute("cy", point.y.toFixed(1));
+  elements.censusFlashlightRing.setAttribute("cx", point.x.toFixed(1));
+  elements.censusFlashlightRing.setAttribute("cy", point.y.toFixed(1));
+  setFlashlightActive(true);
 }
 
 function readInput() {
@@ -811,12 +859,17 @@ elements.profile.addEventListener("change", updatePreview);
 elements.speed.addEventListener("change", updatePreview);
 elements.form.addEventListener("submit", runSimulation);
 elements.reset.addEventListener("click", resetSimulation);
+elements.networkMap.addEventListener("pointerenter", moveFlashlight);
+elements.networkMap.addEventListener("pointermove", moveFlashlight);
+elements.networkMap.addEventListener("pointerleave", () => setFlashlightActive(false));
+elements.networkMap.addEventListener("pointerup", () => setFlashlightActive(false));
 
 function updateClock() {
   elements.clock.textContent = `UTC ${clockText().slice(0, 8)}`;
 }
 
 drawStaticMaps();
+setFlashlightActive(true);
 const query = new URLSearchParams(window.location.search);
 const queryTheme = query.get("theme");
 setTheme(
