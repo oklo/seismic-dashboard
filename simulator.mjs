@@ -96,6 +96,35 @@ export const WAVE_MODEL = Object.freeze({
   sVelocityKmS: 3.4,
   shakingDurationS: 5.0,
 });
+
+// This is a downstream scenario proxy, not part of seismic detection. The
+// benchmark is the dashboard's Hayward/HayWired-scale population-impact index.
+// A noise floor reflects event-study evidence that Loma Prieta and Northridge
+// did not produce a statistically detectable whole-U.S.-market response. The
+// two terms represent a nonlinear fundamental-loss channel and a faster,
+// concave uncertainty repricing; the cap prevents false precision in extreme
+// scenarios that this point-source shaking model cannot resolve.
+export const ES_IMPACT_MODEL = Object.freeze({
+  version: "scenario-v1",
+  noiseFloorImpactIndex: 2.0,
+  haywiredImpactIndex: 23.0,
+  haywiredFundamentalDeclinePercent: 0.25,
+  haywiredRiskDeclinePercent: 0.2,
+  maximumDeclinePercent: 3.0,
+});
+
+const BAY_AREA_PLACES = Object.freeze([
+  { name: "San Francisco", latitude: 37.7749, longitude: -122.4194 },
+  { name: "Oakland", latitude: 37.8044, longitude: -122.2712 },
+  { name: "San Jose", latitude: 37.3382, longitude: -121.8863 },
+  { name: "Hayward", latitude: 37.6688, longitude: -122.0808 },
+  { name: "San Mateo", latitude: 37.563, longitude: -122.3255 },
+  { name: "Livermore", latitude: 37.6819, longitude: -121.768 },
+  { name: "Concord", latitude: 37.978, longitude: -122.0311 },
+  { name: "Napa", latitude: 38.2975, longitude: -122.2869 },
+  { name: "Santa Rosa", latitude: 38.4405, longitude: -122.7144 },
+  { name: "Santa Cruz", latitude: 36.9741, longitude: -122.0308 },
+]);
 const MIN_STATION_SPAN_KM = 20.0;
 const TRIGGER_PEAK_G = 0.00012;
 const MAJOR_MEDIAN_PEAK_G = 0.00075;
@@ -126,6 +155,54 @@ export function surfaceIntersectionRadiusKm(elapsedS, velocityKmS, depthKm) {
   if (elapsedS <= 0 || velocityKmS <= 0 || depthKm < 0) return 0;
   const traveledKm = elapsedS * velocityKmS;
   return traveledKm <= depthKm ? 0 : Math.sqrt(traveledKm ** 2 - depthKm ** 2);
+}
+
+export function modelEsNearMonthImpact(impactIndex) {
+  if (!Number.isFinite(impactIndex)) throw new TypeError("Impact index must be a number.");
+  if (impactIndex < 0) throw new RangeError("Impact index cannot be negative.");
+  const effectiveImpact = Math.max(
+    0,
+    impactIndex - ES_IMPACT_MODEL.noiseFloorImpactIndex,
+  );
+  const benchmarkRange =
+    ES_IMPACT_MODEL.haywiredImpactIndex - ES_IMPACT_MODEL.noiseFloorImpactIndex;
+  const normalizedImpact = effectiveImpact / benchmarkRange;
+  const fundamentalDeclinePercent =
+    ES_IMPACT_MODEL.haywiredFundamentalDeclinePercent * normalizedImpact ** 1.4;
+  const riskDeclinePercent =
+    ES_IMPACT_MODEL.haywiredRiskDeclinePercent * Math.sqrt(normalizedImpact);
+  const uncappedDeclinePercent = fundamentalDeclinePercent + riskDeclinePercent;
+  const declinePercent = Math.min(
+    ES_IMPACT_MODEL.maximumDeclinePercent,
+    uncappedDeclinePercent,
+  );
+  return {
+    version: ES_IMPACT_MODEL.version,
+    expectedChangePercent: declinePercent === 0 ? 0 : -declinePercent,
+    fundamentalDeclinePercent,
+    riskDeclinePercent,
+    capped: declinePercent < uncappedDeclinePercent,
+  };
+}
+
+export function describeBayAreaLocation(latitude, longitude) {
+  if (![latitude, longitude].every(Number.isFinite)) {
+    throw new TypeError("Location coordinates must be numbers.");
+  }
+  const nearest = BAY_AREA_PLACES.map((place) => ({
+    ...place,
+    distanceKm: haversineKm(latitude, longitude, place.latitude, place.longitude),
+  })).sort((placeA, placeB) => placeA.distanceKm - placeB.distanceKm)[0];
+  const qualifier = nearest.distanceKm < 18 ? nearest.name : `near ${nearest.name}`;
+  return `SF Bay Area, ${qualifier}`;
+}
+
+export function eventDisplayStatus(classification, confidence) {
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+    throw new RangeError("Confidence must be between zero and one.");
+  }
+  const prefix = classification === "major_suspected" ? "MAJOR EVENT" : "EVENT";
+  return `${prefix} ${confidence >= 0.82 ? "LIKELY" : "SUSPECTED"}`;
 }
 
 function estimatePeakAccelerationG(magnitude, hypocentralDistanceKm) {

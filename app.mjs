@@ -2,7 +2,10 @@ import { CALIFORNIA_MAP_DATA } from "./california_map.mjs";
 import {
   PRESETS,
   WAVE_MODEL,
+  describeBayAreaLocation,
   estimateMercalliAtLocation,
+  eventDisplayStatus,
+  modelEsNearMonthImpact,
   modelEarthquake,
   modelPopulationImpact,
   surfaceIntersectionRadiusKm,
@@ -61,6 +64,7 @@ const elements = {
   metricPeakMmi: document.querySelector("#metric-peak-mmi"),
   metricPopulationExposed: document.querySelector("#metric-population-exposed"),
   metricImpactIndex: document.querySelector("#metric-impact-index"),
+  metricEsChange: document.querySelector("#metric-es-change"),
   terminal: document.querySelector("#terminal-screen"),
   terminalSummary: document.querySelector("#terminal-summary"),
   relayStatus: document.querySelector("#relay-status"),
@@ -328,6 +332,11 @@ function formatPopulation(population) {
   }).format(population);
 }
 
+function formatExpectedChangePercent(value) {
+  if (value === 0) return "0.00%";
+  return `${value < 0 ? "−" : "+"}${Math.abs(value).toFixed(2)}%`;
+}
+
 function sArrivalAfterOriginS(surfaceDistanceKm, depthKm) {
   return Math.hypot(surfaceDistanceKm, depthKm) / WAVE_MODEL.sVelocityKmS;
 }
@@ -346,16 +355,20 @@ function resetPropagationReveal() {
   reachedImpactMass = 0;
   elements.metricPopulationExposed.textContent = "0";
   elements.metricImpactIndex.textContent = "0.0";
+  elements.metricEsChange.textContent = "0.00%";
 }
 
 function currentPopulationImpact() {
   const populationTotal = populationImpactSummary?.populationTotal ?? 0;
+  const impactIndex =
+    populationTotal > 0
+      ? Math.min(100, (reachedImpactMass / (populationTotal * 49)) * 100)
+      : 0;
   return {
     populationMmi6Plus: reachedPopulationMmi6Plus,
-    impactIndex:
-      populationTotal > 0
-        ? Math.min(100, (reachedImpactMass / (populationTotal * 49)) * 100)
-        : 0,
+    impactIndex,
+    esNearMonthChangePercent:
+      modelEsNearMonthImpact(impactIndex).expectedChangePercent,
   };
 }
 
@@ -391,6 +404,9 @@ function updatePropagationReveal(elapsedS) {
       impact.populationMmi6Plus,
     );
     elements.metricImpactIndex.textContent = impact.impactIndex.toFixed(1);
+    elements.metricEsChange.textContent = formatExpectedChangePercent(
+      impact.esNearMonthChangePercent,
+    );
   }
 }
 
@@ -821,7 +837,10 @@ function alertCard(revision, eventId, impact) {
   const header = document.createElement("div");
   header.className = "alert-card-header";
   const title = document.createElement("strong");
-  title.textContent = revision.classification.replaceAll("_", " ").toUpperCase();
+  title.textContent = `${eventDisplayStatus(
+    revision.classification,
+    revision.confidence,
+  )} — ${describeBayAreaLocation(revision.latitude, revision.longitude)}`;
   const identity = document.createElement("span");
   identity.textContent = `${eventId} · REV ${revision.revision}`;
   header.append(title, identity);
@@ -839,6 +858,7 @@ function alertCard(revision, eventId, impact) {
     ["Source age", `${revision.maxDataLatencyS.toFixed(1)} s`],
     ["Population ≥ VI", formatPopulation(impact.populationMmi6Plus)],
     ["Impact index", impact.impactIndex.toFixed(1)],
+    ["ES near-month", formatExpectedChangePercent(impact.esNearMonthChangePercent)],
   ];
   fields.forEach(([label, value]) => {
     const field = document.createElement("div");
@@ -1123,6 +1143,7 @@ function runSimulation(event) {
   const speed = Number.parseFloat(elements.speed.value);
   const result = modelEarthquake(input, elements.profile.value);
   const impact = updateImpact(input);
+  const esImpact = modelEsNearMonthImpact(impact.impactIndex);
   const originTime = new Date();
   const timeline = buildTimeline(result);
   const runId = nextRunId;
@@ -1161,7 +1182,7 @@ function runSimulation(event) {
   );
   terminalLine(
     "MODEL",
-    `P ${WAVE_MODEL.pVelocityKmS.toFixed(1)} km/s · S ${WAVE_MODEL.sVelocityKmS.toFixed(1)} km/s · peak MMI ${impact.maximumMmi.toFixed(1)} · impact ${impact.impactIndex.toFixed(1)}`,
+    `P ${WAVE_MODEL.pVelocityKmS.toFixed(1)} km/s · S ${WAVE_MODEL.sVelocityKmS.toFixed(1)} km/s · peak MMI ${impact.maximumMmi.toFixed(1)} · impact ${impact.impactIndex.toFixed(1)} · ES ${formatExpectedChangePercent(esImpact.expectedChangePercent)}`,
     "muted",
     originTime,
   );

@@ -6,10 +6,13 @@ import {
   PRESETS,
   STATIONS,
   WAVE_MODEL,
+  describeBayAreaLocation,
   estimateExposurePeakAccelerationG,
+  eventDisplayStatus,
   haversineKm,
   modifiedMercalliFromPga,
   modelEarthquake,
+  modelEsNearMonthImpact,
   modelPopulationImpact,
   surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
@@ -137,6 +140,30 @@ test("Worden PGA conversion and population exposure increase with shaking", () =
   assert.equal(strong.populationTotal, 1_500_000);
   assert.ok(strong.populationWeightedMmi > weak.populationWeightedMmi);
   assert.ok(strong.impactIndex > weak.impactIndex);
+});
+
+test("ES near-month scenario estimate is conservative, monotonic, and bounded", () => {
+  const noise = modelEsNearMonthImpact(2);
+  const lomaPrieta = modelEsNearMonthImpact(8.42);
+  const haywiredScale = modelEsNearMonthImpact(23);
+  const extreme = modelEsNearMonthImpact(1_000);
+
+  assert.equal(noise.expectedChangePercent, 0);
+  assert.ok(lomaPrieta.expectedChangePercent < 0);
+  assert.ok(lomaPrieta.expectedChangePercent > haywiredScale.expectedChangePercent);
+  assert.ok(Math.abs(haywiredScale.expectedChangePercent + 0.45) < 1e-12);
+  assert.equal(extreme.expectedChangePercent, -3);
+  assert.equal(extreme.capped, true);
+  assert.throws(() => modelEsNearMonthImpact(-1), /negative/);
+});
+
+test("trader display grades confidence and adds concise Bay Area geography", () => {
+  assert.equal(eventDisplayStatus("major_suspected", 0.75), "MAJOR EVENT SUSPECTED");
+  assert.equal(eventDisplayStatus("major_suspected", 0.9), "MAJOR EVENT LIKELY");
+  assert.equal(
+    describeBayAreaLocation(PRESETS["san-jose"].latitude, PRESETS["san-jose"].longitude),
+    "SF Bay Area, San Jose",
+  );
 });
 
 test("invalid model input is rejected", () => {

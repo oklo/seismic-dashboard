@@ -22,8 +22,9 @@ and press **Run simulation**. The dashboard includes:
   playback defaults to real time and does not drift after dropped rendering frames.
   Pause/resume freezes event order and accumulated shaking, then shifts the clock
   origin so playback continues from the same instant.
-- Population at modeled MMI VI or higher and an initial population × intensity
-  impact index.
+- Population at modeled MMI VI or higher, an initial population × intensity
+  impact index, and a conditional expected percent change for the CME near-month
+  E-mini S&P 500 future (ES).
 
 ## Scope and physical limits
 
@@ -50,6 +51,26 @@ The current impact index is:
 It remains separate from the station detection and alert-classification model.
 During playback, population exposure and impact accumulate only as the modeled
 S-wave reaches each Census cell; the final values equal the full scenario estimate.
+
+The ES estimate is a conservative downstream scenario proxy, not an observed
+quote or a validated trading forecast. For impact index `I`, it uses
+`x = max(0, (I - 2) / (23 - 2))` and
+`expected ES change = -min(3%, 0.25 x^1.4 + 0.20 sqrt(x))`. The impact-index
+noise floor reflects [event-study evidence](https://doi.org/10.1016/j.ijdrr.2022.102993)
+that the 1989 Loma Prieta and 1994 Northridge earthquakes had no detectable
+whole-market effect. The `I = 23` benchmark is the dashboard's
+Hayward/HayWired-scale case and produces a central estimate of `-0.45%`; the
+[USGS HayWired economic study](https://www.usgs.gov/publications/economic-consequences-haywired-earthquake-scenario)
+estimates $44.2 billion of gross regional product losses in the six months after
+its M7.0 scenario before resilience tactics. CME identifies ES as its nearly
+around-the-clock, broad U.S. equity-index future in the
+[official contract overview](https://www.cmegroup.com/markets/equities/sp/e-mini-sandp500.contract.html).
+
+The estimate is conditional on the modeled earthquake. It does not incorporate
+the detector's uncalibrated confidence as a probability, current market
+volatility or liquidity, time of day, futures basis, exchange pauses, policy
+response, or company/facility-level exposure. Those omissions make it
+explanatory only; it must not drive an order.
 
 ## Map and event provenance
 
