@@ -16,6 +16,8 @@ const EARTH_RADIUS_KM = 6371.0088;
 const IMPACT_GRID_SIZE = 14;
 const PROPAGATION_TIME_BIN_S = 0.35;
 const STATION_MMI_RISE_S = 2.4;
+const LIVE_POLL_INTERVAL_MS = 1_000;
+const LIVE_TRACE_SCALE_G = 0.00001;
 const STATION_CALLOUT_OFFSETS = Object.freeze({
   PINL: { x: 10, y: -34 },
   BKS: { x: -76, y: -31 },
@@ -29,6 +31,7 @@ const STATION_CALLOUT_OFFSETS = Object.freeze({
 
 const elements = {
   form: document.querySelector("#quake-form"),
+  dashboardMode: document.querySelector("#dashboard-mode"),
   preset: document.querySelector("#preset"),
   magnitude: document.querySelector("#magnitude"),
   depth: document.querySelector("#depth"),
@@ -68,6 +71,8 @@ const elements = {
   terminal: document.querySelector("#terminal-screen"),
   terminalSummary: document.querySelector("#terminal-summary"),
   relayStatus: document.querySelector("#relay-status"),
+  outputModeLabel: document.querySelector("#output-mode-label"),
+  terminalAuthMode: document.querySelector("#terminal-auth-mode"),
 };
 
 let simulation = null;
@@ -87,6 +92,12 @@ let draggingEpicenter = false;
 let pendingPlacement = null;
 let placementFrame = null;
 let terminalFollowsLatest = true;
+let activeDashboardMode = "scenario";
+let livePollTimer = null;
+let livePollGeneration = 0;
+let liveLastHealthKey = null;
+let liveLastHealthLogAt = 0;
+let liveLastEventId = null;
 
 function svgElement(name, attributes = {}) {
   const element = document.createElementNS(SVG_NS, name);
@@ -510,8 +521,13 @@ function scrollTerminalToLatest(force = false) {
 function resetTerminal() {
   terminalFollowsLatest = true;
   elements.terminal.replaceChildren();
-  terminalLine("BOOT", "BAY/CHI impact relay 0.3", "muted");
-  terminalLine("MODEL", "scenario input · delivery path simulation", "muted");
+  if (activeDashboardMode === "live") {
+    terminalLine("BOOT", "NCEDC live shadow · read-only browser bridge", "muted");
+    terminalLine("LIVE", "connecting to same-origin api/live", "muted");
+  } else {
+    terminalLine("BOOT", "BAY/CHI impact relay 0.3", "muted");
+    terminalLine("MODEL", "scenario input · delivery path simulation", "muted");
+  }
   const prompt = document.createElement("div");
   prompt.className = "terminal-prompt";
   const promptText = document.createElement("span");
@@ -521,6 +537,237 @@ function resetTerminal() {
   prompt.append(promptText, cursor);
   elements.terminal.append(prompt);
   scrollTerminalToLatest(true);
+}
+
+function setLiveMetricsEmpty() {
+  elements.metricNetwork.textContent = "0 / 8";
+  elements.metricWatch.textContent = "—";
+  elements.metricMajor.textContent = "—";
+  elements.metricPeakMmi.textContent = "—";
+  elements.metricPopulationExposed.textContent = "—";
+  elements.metricImpactIndex.textContent = "—";
+  elements.metricEsChange.textContent = "—";
+}
+
+function formatLivePeak(value) {
+  if (!Number.isFinite(value)) return "—";
+  if (value >= 0.001) return `${value.toFixed(3)} g`;
+  if (value >= 0.00001) return `${value.toFixed(5)} g`;
+  return `${value.toExponential(1)} g`;
+}
+
+function liveWaveformPath(samples) {
+  const width = 120;
+  const middle = 14;
+  if (!Array.isArray(samples) || samples.length === 0) return `M0,${middle}L120,${middle}`;
+  return samples
+    .map((sample, index) => {
+      const x = samples.length === 1 ? width : (index / (samples.length - 1)) * width;
+      const displacement = Math.max(
+        -34,
+        Math.min(34, (Number(sample) / LIVE_TRACE_SCALE_G) * 10),
+      );
+      return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${(
+        middle - displacement
+      ).toFixed(1)}`;
+    })
+    .join("");
+}
+
+function setLiveValue(node, key, label, value) {
+  const valueNode = node.querySelector(`[data-value="${key}"]`);
+  if (!valueNode) return;
+  valueNode.textContent = value;
+  const labelNode = valueNode.parentElement?.querySelector(`[data-label="${key}"]`);
+  if (labelNode) labelNode.textContent = label;
+}
+
+function updateLiveStation(station) {
+  const fresh = station?.fresh === true;
+  const seen = Number.isFinite(station?.sampleAgeS);
+  const phase = fresh ? "recorded" : seen ? "below-gate" : "wait";
+  const status = fresh ? "LIVE" : seen ? "STALE" : "WAIT";
+  const age = seen ? `${station.sampleAgeS.toFixed(1)}s` : "—";
+  const stationColor = fresh ? "#4f9562" : seen ? "#b5453d" : "#aeb6af";
+  document.querySelectorAll(`[data-station="${station.code}"]`).forEach((node) => {
+    ["wait", "p-pick", "p-wave", "shaking", "recorded", "below-gate"].forEach(
+      (value) => node.classList.remove(`phase-${value}`),
+    );
+    node.classList.remove("associated");
+    node.classList.add(`phase-${phase}`);
+    node.style.setProperty("--station-mmi-color", stationColor);
+    node.setAttribute(
+      "aria-label",
+      `${station.id}, ${status.toLowerCase()}, sample age ${age}`,
+    );
+    const markerReading = node.querySelector(".marker-reading");
+    if (markerReading) markerReading.textContent = `AGE ${age} · ${status}`;
+    const stationCore = node.querySelector(".station-core");
+    if (stationCore) {
+      stationCore.style.fill = stationColor;
+      stationCore.style.stroke = stationColor;
+    }
+    setLiveValue(node, "distance", "AGE", age);
+    setLiveValue(node, "arrivals", "RATE", `${station.sampleRateHz.toFixed(0)} Hz`);
+    setLiveValue(node, "mmi", "STATE", status);
+    setLiveValue(node, "peak", "PKT PEAK", formatLivePeak(station.packetPeakG));
+    const trace = node.querySelector(".trace-signal");
+    if (trace) trace.setAttribute("d", liveWaveformPath(station.samplesG));
+  });
+}
+
+function logLiveHealth(snapshot, healthKey) {
+  const generatedAt = Number(snapshot.generatedAt);
+  const due = generatedAt - liveLastHealthLogAt >= 10;
+  if (healthKey === liveLastHealthKey && !due) return;
+  const maximumAge = Number.isFinite(snapshot.maximumSampleAgeS)
+    ? `${snapshot.maximumSampleAgeS.toFixed(1)}s max sample age`
+    : "waiting for samples";
+  const sourceFaults = `${snapshot.gapCount ?? 0} gaps · ${snapshot.pollErrorCount ?? 0} poll errors`;
+  terminalLine(
+    snapshot.healthy ? "HEALTH" : "DEGRADED",
+    `${snapshot.activeStations}/${snapshot.expectedStations} active · ${snapshot.packetCount} packets · ${maximumAge} · ${sourceFaults}`,
+    snapshot.healthy ? "success" : "danger",
+    new Date(generatedAt * 1000),
+  );
+  liveLastHealthKey = healthKey;
+  liveLastHealthLogAt = generatedAt;
+}
+
+function applyLiveSnapshot(snapshot) {
+  const active = Number(snapshot.activeStations);
+  const expected = Number(snapshot.expectedStations);
+  const gaps = Number(snapshot.gapCount ?? 0);
+  const pollErrors = Number(snapshot.pollErrorCount ?? 0);
+  const healthKey = `${snapshot.status}:${active}:${expected}:${gaps}:${pollErrors}:${snapshot.error ?? ""}`;
+  elements.metricNetwork.textContent = `${active} / ${expected}`;
+  elements.simulationClock.textContent = "LIVE";
+  elements.simulationRate.textContent = snapshot.source ?? "NCEDC DART";
+  elements.relayStatus.className = `relay-status ${
+    snapshot.healthy ? "alerting" : "blocked"
+  }`;
+  elements.relayStatus.textContent = snapshot.healthy
+    ? `Live shadow · ${active}/${expected}`
+    : `${snapshot.status} · ${active}/${expected}`;
+  const maximumAge = Number.isFinite(snapshot.maximumSampleAgeS)
+    ? ` · max age ${snapshot.maximumSampleAgeS.toFixed(1)}s`
+    : "";
+  elements.terminalSummary.textContent = `NCEDC DART ${active}/${expected} active${maximumAge} · ${gaps} gaps · ${pollErrors} poll errors.`;
+  logLiveHealth(snapshot, healthKey);
+  snapshot.stations.forEach(updateLiveStation);
+
+  if (snapshot.latestEvent) {
+    const event = snapshot.latestEvent;
+    const eventKey = `${event.event_id}:${event.revision}`;
+    if (eventKey !== liveLastEventId) {
+      liveLastEventId = eventKey;
+      const status = eventDisplayStatus(event.classification, event.confidence);
+      terminalLine(
+        "DETECT",
+        `${status} — ${describeBayAreaLocation(event.latitude, event.longitude)} · ${event.station_count} sites`,
+        "danger",
+        new Date(event.detected_at * 1000),
+      );
+      drawEpicenters({
+        latitude: event.latitude,
+        longitude: event.longitude,
+        depthKm: event.depth_km,
+      }, true);
+    }
+  }
+}
+
+function applyLiveUnavailable(message) {
+  const healthKey = `unavailable:${message}`;
+  elements.metricNetwork.textContent = "0 / 8";
+  elements.simulationClock.textContent = "LIVE";
+  elements.simulationRate.textContent = "BRIDGE OFFLINE";
+  elements.relayStatus.className = "relay-status blocked";
+  elements.relayStatus.textContent = "Live bridge unavailable";
+  elements.terminalSummary.textContent =
+    "No live data. Run the local read-only dashboard bridge.";
+  if (healthKey !== liveLastHealthKey) {
+    terminalLine("CLOSED", message, "danger");
+    liveLastHealthKey = healthKey;
+  }
+}
+
+async function pollLiveStatus(generation) {
+  try {
+    const response = await fetch("api/live", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`live bridge returned HTTP ${response.status}`);
+    const snapshot = await response.json();
+    if (snapshot.schemaVersion !== 1) throw new Error("unsupported live bridge schema");
+    if (generation === livePollGeneration && activeDashboardMode === "live") {
+      applyLiveSnapshot(snapshot);
+    }
+  } catch (error) {
+    if (generation === livePollGeneration && activeDashboardMode === "live") {
+      applyLiveUnavailable(error.message);
+    }
+  } finally {
+    if (generation === livePollGeneration && activeDashboardMode === "live") {
+      livePollTimer = window.setTimeout(
+        () => pollLiveStatus(generation),
+        LIVE_POLL_INTERVAL_MS,
+      );
+    }
+  }
+}
+
+function stopLivePolling() {
+  livePollGeneration += 1;
+  if (livePollTimer !== null) window.clearTimeout(livePollTimer);
+  livePollTimer = null;
+}
+
+function enterLiveMode() {
+  cancelSimulation();
+  stopLivePolling();
+  activeDashboardMode = "live";
+  liveLastHealthKey = null;
+  liveLastHealthLogAt = 0;
+  liveLastEventId = null;
+  resetTerminal();
+  setFormLocked(true);
+  elements.play.disabled = true;
+  elements.pause.disabled = true;
+  elements.outputModeLabel.textContent = "Live network output";
+  elements.terminalAuthMode.textContent = "READ ONLY / NO DELIVERY";
+  elements.formNote.textContent = "";
+  elements.relayStatus.className = "relay-status";
+  elements.relayStatus.textContent = "Connecting to live bridge";
+  elements.epicenterLayer.replaceChildren();
+  clearWavefronts();
+  resetPropagationReveal();
+  setLiveMetricsEmpty();
+  const referenceInput = PRESETS["san-francisco-1906"];
+  const referenceResult = modelEarthquake(referenceInput, "dart");
+  drawStations(referenceResult, referenceInput);
+  referenceResult.stationResults.forEach((station) =>
+    updateLiveStation({
+      ...station,
+      fresh: false,
+      sampleAgeS: null,
+      sampleRateHz: 100,
+      packetPeakG: null,
+      samplesG: [],
+    }),
+  );
+  const generation = livePollGeneration;
+  pollLiveStatus(generation);
+}
+
+function enterScenarioMode() {
+  stopLivePolling();
+  activeDashboardMode = "scenario";
+  elements.outputModeLabel.textContent = "Simulation output";
+  elements.terminalAuthMode.textContent = "HMAC-SHA256 / SIMULATED";
+  elements.formNote.textContent = "";
+  resetSimulation();
 }
 
 function epicenterGroup(map, input, overview = false) {
@@ -647,6 +894,7 @@ function stationCard(station, input) {
     const item = document.createElement("div");
     const term = document.createElement("span");
     term.textContent = label;
+    term.dataset.label = key;
     const description = document.createElement("b");
     description.textContent = value;
     description.dataset.value = key;
@@ -1223,6 +1471,10 @@ elements.preset.addEventListener("change", () => {
 });
 elements.profile.addEventListener("change", updatePreview);
 elements.speed.addEventListener("change", updatePreview);
+elements.dashboardMode.addEventListener("change", () => {
+  if (elements.dashboardMode.value === "live") enterLiveMode();
+  else enterScenarioMode();
+});
 elements.form.addEventListener("submit", runSimulation);
 elements.reset.addEventListener("click", resetSimulation);
 elements.play.addEventListener("click", playSimulation);
@@ -1239,7 +1491,7 @@ elements.terminal.addEventListener(
   { passive: true },
 );
 elements.networkMap.addEventListener("pointerdown", (event) => {
-  if (simulation || event.button !== 0) return;
+  if (activeDashboardMode === "live" || simulation || event.button !== 0) return;
   draggingEpicenter = true;
   elements.networkMap.setPointerCapture(event.pointerId);
   queueEpicenterPlacement(event);
@@ -1266,11 +1518,16 @@ const query = new URLSearchParams(window.location.search);
 if (["1", "5", "20"].includes(query.get("speed"))) {
   elements.speed.value = query.get("speed");
 }
+if (query.get("mode") === "live") {
+  elements.dashboardMode.value = "live";
+}
 updateClock();
 window.setInterval(updateClock, 250);
 resetTerminal();
 updatePreview();
 setPlaybackState("idle");
-if (query.get("autorun") === "1") {
+if (elements.dashboardMode.value === "live") {
+  enterLiveMode();
+} else if (query.get("autorun") === "1") {
   window.requestAnimationFrame(() => elements.form.requestSubmit());
 }

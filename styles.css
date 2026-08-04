@@ -851,7 +851,7 @@ main {
   overscroll-behavior: contain;
 }
 .terminal-line {
-  grid-template-columns: 65px 42px minmax(0, 1fr);
+  grid-template-columns: 72px 48px minmax(0, 1fr);
   gap: 5px;
   color: #39413b;
 }
@@ -939,6 +939,29 @@ main {
   padding: 10px;
   background: #ffffff;
   border-bottom: 1px solid var(--line);
+}
+.right-rail .mode-switch {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 7px;
+  padding-bottom: 7px;
+  color: var(--subtle);
+  border-bottom: 1px solid var(--line);
+  font: 700 7px var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.right-rail .mode-switch select {
+  width: 100%;
+  height: 30px;
+  padding-inline: 7px;
+  color: #303530;
+  background: #f7f8f5;
+  border: 1px solid #cbd1cb;
+  border-radius: 2px;
+  font: 650 8px var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
 }
 .right-rail .controls-panel form { gap: 6px; }
 .right-rail .controls-panel .field-row { gap: 5px; }

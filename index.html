@@ -29,7 +29,7 @@
       <section class="simulator-grid">
         <section class="panel terminal-panel" aria-label="Simulation output">
           <div class="terminal-toolbar">
-            <span>Simulation output</span>
+            <span id="output-mode-label">Simulation output</span>
             <div class="relay-status" id="relay-status">Ready</div>
           </div>
           <div class="terminal-screen" id="terminal-screen" role="log" aria-live="polite"
@@ -40,7 +40,7 @@
           </div>
           <div class="terminal-footer">
             <span id="terminal-summary">Waiting for a synthetic origin.</span>
-            <span>AUTH <b>HMAC-SHA256 / SIMULATED</b></span>
+            <span>AUTH <b id="terminal-auth-mode">HMAC-SHA256 / SIMULATED</b></span>
           </div>
         </section>
 
@@ -148,13 +148,20 @@
             </div>
 
             <aside class="right-rail">
-              <section class="controls-panel" aria-label="Earthquake scenario controls">
+              <section class="controls-panel" aria-label="Dashboard and scenario controls">
+                <label class="mode-switch" for="dashboard-mode">
+                  <span>Display</span>
+                  <select id="dashboard-mode" name="dashboard-mode">
+                    <option value="scenario">Scenario simulator</option>
+                    <option value="live">Live NCEDC shadow</option>
+                  </select>
+                </label>
                 <form id="quake-form">
                   <label class="field field-wide">
                     <span>Earthquake</span>
                     <select id="preset" name="preset">
                       <option value="loma-prieta-1989">1989 Loma Prieta · Mw 6.9</option>
-                      <option value="san-francisco-1906">1906 San Francisco · Mw 7.9</option>
+                      <option value="san-francisco-1906" selected>1906 San Francisco · Mw 7.9</option>
                       <option value="hayward-1868">1868 Hayward · Mw 6.8 estimate</option>
                       <option value="south-napa">2014 South Napa · Mw 6.0</option>
                       <option value="san-francisco">San Francisco scenario · M 7.0</option>
@@ -169,14 +176,14 @@
                       <span>Magnitude</span>
                       <div class="input-with-unit">
                         <b>M</b>
-                        <input id="magnitude" name="magnitude" type="number" value="6.9"
+                        <input id="magnitude" name="magnitude" type="number" value="7.9"
                           min="2.5" max="8.5" step="0.1" inputmode="decimal" required>
                       </div>
                     </label>
                     <label class="field">
                       <span>Depth</span>
                       <div class="input-with-unit">
-                        <input id="depth" name="depth" type="number" value="17.2"
+                        <input id="depth" name="depth" type="number" value="11.7"
                           min="0" max="80" step="0.1" inputmode="decimal" required>
                         <b>km</b>
                       </div>
@@ -186,12 +193,12 @@
                   <div class="field-row">
                     <label class="field">
                       <span>Latitude</span>
-                      <input id="latitude" name="latitude" type="number" value="37.036"
+                      <input id="latitude" name="latitude" type="number" value="37.750"
                         min="32" max="43" step="0.001" inputmode="decimal" required>
                     </label>
                     <label class="field">
                       <span>Longitude</span>
-                      <input id="longitude" name="longitude" type="number" value="-121.880"
+                      <input id="longitude" name="longitude" type="number" value="-122.550"
                         min="-126" max="-114" step="0.001" inputmode="decimal" required>
                     </label>
                   </div>

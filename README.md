@@ -6,8 +6,9 @@ then into a preliminary population-weighted impact estimate.
 
 **Live dashboard:** https://oklo.github.io/seismic-dashboard/
 
-Choose a historical or scenario event, click or drag its epicenter on the map,
-and press **Run simulation**. The dashboard includes:
+The simulator defaults to the 1906 San Francisco M7.9 event. Choose another
+historical or scenario event, click or drag its epicenter on the map, and press
+**Run simulation**. The dashboard includes:
 
 - A light laptop-demo layout with a fixed-height, independently scrolling
   code-style output pane, central Bay map, and a narrow simulation/station rail.
@@ -25,12 +26,18 @@ and press **Run simulation**. The dashboard includes:
 - Population at modeled MMI VI or higher, an initial population × intensity
   impact index, and a conditional expected percent change for the CME near-month
   E-mini S&P 500 future (ES).
+- An explicit **Live NCEDC shadow** display that can consume read-only waveform
+  snippets and health data from the full system's local same-origin bridge.
 
 ## Scope and physical limits
 
-The site uses no live waveform data, makes no network requests, sends no alerts,
-and has no order-entry logic. It is a simulator, not a public-safety product or a
-validated market-impact model.
+Default scenario mode uses no live waveform data and makes no runtime network
+requests. Selecting **Live NCEDC shadow** polls relative `api/live`; the static
+GitHub Pages deployment has no collector backend and therefore reports the bridge
+as unavailable. The bridge is supplied only by the full repository's loopback
+dashboard command. Neither mode sends alerts or has order-entry logic. This is a
+research/shadow prototype, not a public-safety product or a validated market-
+impact model.
 
 The faint P/S rings are homogeneous travel-time guides, not shaking contours.
 The current MMI field is a low-latency point-source attenuation proxy; it does not
@@ -102,6 +109,12 @@ python3 -m http.server 8000
 ```
 
 Then open http://127.0.0.1:8000/.
+
+To exercise the actual read-only NCEDC shadow view, use the
+[full seismic repository](https://github.com/oklo/seismic) with its live
+dependencies, run `uv run seismic dashboard --config config/bay_area.toml`, and
+open http://127.0.0.1:8000/?mode=live. The bridge binds to loopback by default and
+does not invoke alert delivery.
 
 Run the model checks with:
 
