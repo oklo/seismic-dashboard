@@ -1,22 +1,25 @@
 # Quake impact → market impact
 
-A dependency-free browser simulator for exploring how a Bay Area earthquake can
-move from professional strong-motion stations to an authenticated Chicago alert,
-then into a preliminary population-weighted impact estimate.
+A dependency-free browser simulator for exploring how a California earthquake
+can move from professional strong-motion stations to an authenticated Chicago
+alert, then into a preliminary population-weighted impact estimate.
 
 **Live dashboard:** https://oklo.github.io/seismic-dashboard/
 
-The simulator defaults to the 1906 San Francisco M7.9 event. Choose another
-historical or scenario event, click or drag its epicenter on the map, and press
-**Run simulation**. The dashboard includes:
+The simulator defaults to the 1906 San Francisco M7.9 event. Choose the
+**SoCal · Cajon** dashboard view for the M7.8 gate-open proxy, or open the
+[Cajon view directly](https://oklo.github.io/seismic-dashboard/?view=cajon).
+Choose another historical or scenario event, click or drag its epicenter on the
+map, and press **Run simulation**. The dashboard includes:
 
 - A light laptop-demo layout with a fixed-height, independently scrolling
-  code-style output pane, central Bay map, and a narrow simulation/station rail.
-- 1989 Loma Prieta, 1906 San Francisco, 1868 Hayward, and 2014 South Napa presets.
-- A landscape Bay Area map that fills its panel, with gray 2020 Census population
-  dots that light by local MMI as the S-wave reaches them, named USGS Quaternary
-  fault traces, and a California locator inset in the Pacific.
-- Eight professional BK station locations with physical site names, local PGA,
+  code-style output pane, central regional map, and a narrow simulation/station rail.
+- Historical Bay Area presets plus a Southern California M7.8 finite-rupture
+  scenario crossing the San Jacinto, Cajon Pass, and Mojave San Andreas corridor.
+- Landscape Bay Area and Southern California maps with 2020 Census population
+  dots that light by local MMI as strong motion reaches them, named USGS
+  Quaternary fault traces, and a California locator inset.
+- Eight professional BK or CI station locations with physical site names, local PGA,
   P/S arrivals, phase, compact waveform traces, and MMI that mounts during
   shaking before holding the final modeled site value.
 - Depth-aware P- and S-wave surface intersections driven by one monotonic clock;
@@ -40,11 +43,11 @@ research/shadow prototype, not a public-safety product or a validated market-
 impact model.
 
 The faint P/S rings are homogeneous travel-time guides, not shaking contours.
-The current MMI field is a low-latency point-source attenuation proxy; it does not
-yet include finite-fault rupture, directivity, 3-D velocity-structure focusing,
-basin response, Bay mud, Vs30, or topographic effects. Those effects are important
-in the Bay Area and must be added before interpreting the map as a detailed
-ground-motion forecast.
+Bay presets use a low-latency point-source attenuation proxy. The Cajon view uses
+distance to a progressively activated 261 km rupture polyline with an assumed
+2.8 km/s rupture velocity. It still omits true slip distribution, directivity
+amplitudes, 3-D velocity-structure focusing, basin response, Vs30, and topographic
+effects, so neither map is a detailed ground-motion forecast.
 
 PGA is converted to MMI using the California coefficients from Worden et al.
 (2012), as implemented by
@@ -85,18 +88,32 @@ The checked-in map module is generated at build time from:
 
 - U.S. Census Bureau TIGERweb 2020 Census populated-block internal points and
   `POP100` counts, aggregated into 1.5 SVG-pixel cells without changing the
-  represented population total across the expanded Bay/coastal extent.
+  represented population total across each regional extent.
 - Census Bureau January 1, 2024 generalized state and county boundaries.
 - The USGS [Quaternary Fault and Fold Database](https://doi.org/10.5066/P9BCVRCK)
-  for the San Andreas, San Gregorio, Hayward, Calaveras, Rodgers Creek, Concord,
-  Green Valley, West Napa, and Greenville traces.
+  for the Bay fault set and Southern California's San Andreas, San Jacinto,
+  Elsinore, Sierra Madre, Garlock, and related traces.
 
 The 1989 and 1906 presets use USGS reviewed origins. The 1868 Hayward magnitude
 is an historical estimate; its map location and depth are explicit scenario
 proxies because the earthquake predates instrumental recording.
 
-The eight displayed station streams mirror the validated BK detector profile;
-they are not a complete Bay Area sensor inventory. A 2026-08-02 DART probe also
+### Cajon gate evidence boundary
+
+[Burkhard et al. (2026)](https://doi.org/10.1029/2025JB033213) modeled 1,000
+years of stress accumulation and found that Cajon Pass may conditionally allow
+ruptures to connect the San Andreas and San Jacinto systems. The modeled stresses
+are not direct subsurface measurements, and the study does not predict when an
+earthquake will happen.
+
+The M7.8 scale and widely quoted impact figures come from the separate 2008
+[USGS ShakeOut Scenario](https://www.usgs.gov/publications/shakeout-scenario).
+The dashboard does not reproduce ShakeOut's rupture, casualty, or loss models; it
+labels the new view as a hybrid scenario proxy. Its eight current CI HNZ sites
+come from EarthScope FDSN metadata and are display-only—not a validated live feed.
+
+The eight Bay station streams mirror the validated BK detector profile; they are
+not a complete Bay Area sensor inventory. A 2026-08-02 DART probe also
 found actively updating 100 Hz vertical accelerometer files for `NC.JPR..HNZ` in
 San Francisco and `NC.NBO..HNZ`, `BK.BUCI.00.HNZ`, and `BK.MCCM.00.HNZ` in Marin.
 They should join the detector only after sensitivity, gap, and continuous-latency

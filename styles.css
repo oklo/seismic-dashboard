@@ -689,6 +689,24 @@ main {
 .population-impact.mmi-10 { stroke: #c10000; }
 .fault-trace { fill: none; stroke: #ff645c; stroke-width: 1.05; opacity: 0.73; vector-effect: non-scaling-stroke; }
 .fault-trace:hover { stroke-width: 2; opacity: 1; }
+.rupture-trace,
+.rupture-progress {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rupture-trace { stroke: #922f2a; stroke-width: 3; stroke-dasharray: 5 4; opacity: 0.5; }
+.rupture-progress { stroke: #e13228; stroke-width: 4.5; filter: url(#glow); }
+.cajon-gate-marker circle { fill: #fff; stroke: #922f2a; stroke-width: 2; }
+.cajon-gate-marker text {
+  fill: #6e2925;
+  stroke: #fff;
+  stroke-width: 2.5px;
+  paint-order: stroke;
+  font: 700 7px var(--mono);
+  letter-spacing: 0.04em;
+}
 
 .mmi-legend {
   position: absolute;
@@ -940,13 +958,18 @@ main {
   background: #ffffff;
   border-bottom: 1px solid var(--line);
 }
+.right-rail .view-switches {
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  gap: 5px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
 .right-rail .mode-switch {
   display: grid;
   gap: 3px;
-  margin-bottom: 7px;
-  padding-bottom: 7px;
   color: var(--subtle);
-  border-bottom: 1px solid var(--line);
   font: 700 7px var(--mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -963,6 +986,17 @@ main {
   letter-spacing: 0;
   text-transform: none;
 }
+.right-rail .scenario-context {
+  margin: 0 0 6px;
+  padding: 5px 6px;
+  color: #6e2925;
+  background: #fff4ef;
+  border-left: 2px solid #b5453d;
+  font: 600 6.4px/1.28 var(--mono);
+}
+.right-rail .scenario-context b,
+.right-rail .scenario-context span { display: block; }
+.right-rail .scenario-context b { margin-bottom: 2px; font-size: 6.8px; letter-spacing: 0.04em; }
 .right-rail .controls-panel form { gap: 6px; }
 .right-rail .controls-panel .field-row { gap: 5px; }
 .right-rail .controls-panel .field { gap: 3px; }
@@ -1127,8 +1161,8 @@ main {
 }
 .right-rail .station-section-heading { margin-bottom: 5px; font-size: 7px; }
 .right-rail .station-section-heading small { font-size: 7px; }
-.right-rail .station-grid { grid-template-columns: 1fr; gap: 4px; }
-.right-rail .station-card { padding: 5px 6px 4px; background: #ffffff; }
+.right-rail .station-grid { grid-template-columns: 1fr; gap: 3px; }
+.right-rail .station-card { padding: 4px 6px 3px; background: #ffffff; }
 .right-rail .station-card header { gap: 6px; }
 .right-rail .station-card header strong { font-size: 8.5px; }
 .right-rail .station-card header small { display: none; }
@@ -1140,7 +1174,7 @@ main {
   letter-spacing: -0.025em;
   white-space: nowrap;
 }
-.right-rail .station-trace { height: 11px; margin: 1px 0; }
+.right-rail .station-trace { height: 8px; margin: 0; }
 .right-rail .station-values { gap: 2px; }
 .right-rail .station-values span { font-size: 5px; }
 .right-rail .station-values b { font-size: 6.2px; }

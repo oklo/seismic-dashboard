@@ -1,13 +1,16 @@
 import { CALIFORNIA_MAP_DATA } from "./california_map.mjs";
 import {
   PRESETS,
+  REGIONS,
   WAVE_MODEL,
   describeBayAreaLocation,
+  describeLocation,
   estimateMercalliAtLocation,
   eventDisplayStatus,
   modelEsNearMonthImpact,
   modelEarthquake,
   modelPopulationImpact,
+  ruptureSamples,
   surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
 
@@ -27,11 +30,21 @@ const STATION_CALLOUT_OFFSETS = Object.freeze({
   PESC: { x: 10, y: -28 },
   MHC: { x: -77, y: -30 },
   UMUN: { x: -77, y: -2 },
+  USC: { x: -77, y: -28 },
+  RUS: { x: -77, y: -8 },
+  WLT: { x: 10, y: -30 },
+  PDU: { x: 10, y: -10 },
+  SVD: { x: 10, y: -30 },
+  RVR: { x: 10, y: 5 },
+  DEV: { x: 10, y: -10 },
+  VCS: { x: -77, y: -28 },
 });
 
 const elements = {
   form: document.querySelector("#quake-form"),
   dashboardMode: document.querySelector("#dashboard-mode"),
+  dashboardRegion: document.querySelector("#dashboard-region"),
+  scenarioContext: document.querySelector("#scenario-context"),
   preset: document.querySelector("#preset"),
   magnitude: document.querySelector("#magnitude"),
   depth: document.querySelector("#depth"),
@@ -49,6 +62,7 @@ const elements = {
   populationLayer: document.querySelector("#population-layer"),
   populationImpactLayer: document.querySelector("#population-impact-layer"),
   faultLayer: document.querySelector("#fault-layer"),
+  ruptureLayer: document.querySelector("#rupture-layer"),
   californiaInset: document.querySelector("#california-inset"),
   stationLayer: document.querySelector("#station-layer"),
   epicenterLayer: document.querySelector("#epicenter-layer"),
@@ -73,6 +87,9 @@ const elements = {
   relayStatus: document.querySelector("#relay-status"),
   outputModeLabel: document.querySelector("#output-mode-label"),
   terminalAuthMode: document.querySelector("#terminal-auth-mode"),
+  stationNetworkLabel: document.querySelector("#station-network-label"),
+  mapTitle: document.querySelector("#map-title"),
+  mapDescription: document.querySelector("#map-description"),
 };
 
 let simulation = null;
@@ -98,6 +115,46 @@ let livePollGeneration = 0;
 let liveLastHealthKey = null;
 let liveLastHealthLogAt = 0;
 let liveLastEventId = null;
+let activeRegionName = "bay";
+
+function currentRegion() {
+  return REGIONS[activeRegionName];
+}
+
+function currentMap() {
+  return CALIFORNIA_MAP_DATA[currentRegion().mapKey];
+}
+
+function defaultPresetForRegion(regionName) {
+  return regionName === "southernCalifornia"
+    ? "cajon-gate-2026"
+    : "san-francisco-1906";
+}
+
+function applyPreset(presetId) {
+  const preset = PRESETS[presetId];
+  if (!preset) return;
+  elements.preset.value = presetId;
+  elements.magnitude.value = preset.magnitude.toFixed(1);
+  elements.depth.value = preset.depthKm.toFixed(1);
+  elements.latitude.value = preset.latitude.toFixed(3);
+  elements.longitude.value = preset.longitude.toFixed(3);
+}
+
+function configureRegion(regionName) {
+  const region = REGIONS[regionName];
+  if (!region) throw new RangeError(`Unknown dashboard region: ${regionName}`);
+  activeRegionName = regionName;
+  elements.dashboardRegion.value = regionName;
+  elements.stationNetworkLabel.textContent = region.networkLabel;
+  elements.scenarioContext.hidden = regionName !== "southernCalifornia";
+  elements.mapTitle.textContent = `${region.label} shaking, population, faults and stations`;
+  elements.mapDescription.textContent =
+    regionName === "southernCalifornia"
+      ? "Census population dots, USGS fault traces, a finite San Jacinto to San Andreas rupture through Cajon Pass, eight CI accelerometer sites, and modeled P and S wavefronts."
+      : "Census population dots, USGS Quaternary fault traces, modeled Mercalli intensity, eight BK stations, and P and S wavefronts.";
+  drawStaticMaps();
+}
 
 function svgElement(name, attributes = {}) {
   const element = document.createElementNS(SVG_NS, name);
@@ -148,7 +205,7 @@ function pointPath(points) {
 
 function drawPopulation() {
   const groups = { low: [], medium: [], high: [] };
-  CALIFORNIA_MAP_DATA.bay.populationCells.forEach(([x, y, population]) => {
+  currentMap().populationCells.forEach(([x, y, population]) => {
     const group = population >= 200 ? "high" : population >= 25 ? "medium" : "low";
     groups[group].push([x, y]);
   });
@@ -161,7 +218,7 @@ function drawPopulation() {
 
 function drawFaults() {
   elements.faultLayer.replaceChildren();
-  CALIFORNIA_MAP_DATA.bay.faults.forEach((fault) => {
+  currentMap().faults.forEach((fault) => {
     const path = svgElement("path", {
       class: "fault-trace",
       d: fault.path,
@@ -169,7 +226,9 @@ function drawFaults() {
       "aria-label": fault.name,
     });
     const title = svgElement("title");
-    title.textContent = fault.name;
+    title.textContent = fault.sectionName
+      ? `${fault.name} · ${fault.sectionName}`
+      : fault.name;
     path.append(title);
     elements.faultLayer.append(path);
   });
@@ -203,9 +262,9 @@ function drawCaliforniaInset() {
   });
   drawGeography(geography, map, "california-inset");
 
-  const bayBounds = geographicBounds(CALIFORNIA_MAP_DATA.bay);
-  const topLeft = projectPoint(map, bayBounds.latitudeMax, bayBounds.longitudeMin);
-  const bottomRight = projectPoint(map, bayBounds.latitudeMin, bayBounds.longitudeMax);
+  const regionBounds = geographicBounds(currentMap());
+  const topLeft = projectPoint(map, regionBounds.latitudeMax, regionBounds.longitudeMin);
+  const bottomRight = projectPoint(map, regionBounds.latitudeMin, regionBounds.longitudeMax);
   const window = svgElement("rect", {
     class: "california-inset-window",
     x: topLeft.x,
@@ -225,11 +284,12 @@ function drawCaliforniaInset() {
 function drawImpactGrid() {
   impactCells = [];
   elements.impactGrid.replaceChildren();
-  const { width, height, xOffset, yOffset } = CALIFORNIA_MAP_DATA.bay.projection;
+  const map = currentMap();
+  const { width, height, xOffset, yOffset } = map.projection;
   for (let y = yOffset; y < height - yOffset; y += IMPACT_GRID_SIZE) {
     for (let x = xOffset; x < width - xOffset; x += IMPACT_GRID_SIZE) {
       const center = unprojectPoint(
-        CALIFORNIA_MAP_DATA.bay,
+        map,
         x + IMPACT_GRID_SIZE / 2,
         y + IMPACT_GRID_SIZE / 2,
       );
@@ -247,7 +307,8 @@ function drawImpactGrid() {
 }
 
 function drawStaticMaps() {
-  drawGeography(elements.bayGeography, CALIFORNIA_MAP_DATA.bay, "bay");
+  elements.ruptureLayer.replaceChildren();
+  drawGeography(elements.bayGeography, currentMap(), currentRegion().eventPrefix);
   drawImpactGrid();
   drawPopulation();
   drawFaults();
@@ -264,14 +325,15 @@ function mapPoint(event) {
 
 function placeEpicenter(event) {
   const point = mapPoint(event);
-  const projection = CALIFORNIA_MAP_DATA.bay.projection;
+  const map = currentMap();
+  const projection = map.projection;
   const longitudeMax =
     projection.longitudeMin +
     (projection.width - 2 * projection.xOffset) / projection.xScale;
   const latitudeMin =
     projection.latitudeMax -
     (projection.height - 2 * projection.yOffset) / projection.yScale;
-  const location = unprojectPoint(CALIFORNIA_MAP_DATA.bay, point.x, point.y);
+  const location = unprojectPoint(map, point.x, point.y);
   elements.latitude.value = Math.max(
     latitudeMin,
     Math.min(projection.latitudeMax, location.latitude),
@@ -295,12 +357,18 @@ function queueEpicenterPlacement(event) {
 }
 
 function readInput() {
-  return {
+  const preset = PRESETS[elements.preset.value];
+  const input = {
     magnitude: Number.parseFloat(elements.magnitude.value),
     depthKm: Number.parseFloat(elements.depth.value),
     latitude: Number.parseFloat(elements.latitude.value),
     longitude: Number.parseFloat(elements.longitude.value),
+    region: activeRegionName,
   };
+  if (preset?.rupture && preset.region === activeRegionName) {
+    input.rupture = preset.rupture;
+  }
+  return input;
 }
 
 function formatSeconds(seconds) {
@@ -348,8 +416,10 @@ function formatExpectedChangePercent(value) {
   return `${value < 0 ? "−" : "+"}${Math.abs(value).toFixed(2)}%`;
 }
 
-function sArrivalAfterOriginS(surfaceDistanceKm, depthKm) {
-  return Math.hypot(surfaceDistanceKm, depthKm) / WAVE_MODEL.sVelocityKmS;
+function describeScenarioLocation(input, latitude, longitude) {
+  return input.rupture
+    ? "Southern California, Cajon Pass corridor"
+    : describeLocation(latitude, longitude, activeRegionName);
 }
 
 function resetPropagationReveal() {
@@ -423,27 +493,28 @@ function updatePropagationReveal(elapsedS) {
 
 function updateImpact(input) {
   impactCells.forEach((cell) => {
-    const { intensity, surfaceDistanceKm } = estimateMercalliAtLocation(
+    const { intensity, strongMotionAfterOriginS } = estimateMercalliAtLocation(
       input,
       cell.latitude,
       cell.longitude,
     );
     cell.rect.style.fill = mmiColor(intensity);
-    cell.arrivalS = sArrivalAfterOriginS(surfaceDistanceKm, input.depthKm);
+    cell.arrivalS = strongMotionAfterOriginS;
     cell.opacity = intensity < 2 ? "0" : String(Math.min(0.31, 0.035 + intensity * 0.026));
   });
   impactCells.sort((a, b) => a.arrivalS - b.arrivalS);
 
   const arrivalGroups = new Map();
   populationImpactTimeline = [];
-  CALIFORNIA_MAP_DATA.bay.populationCells.forEach(([x, y, population]) => {
-    const location = unprojectPoint(CALIFORNIA_MAP_DATA.bay, x, y);
-    const { intensity, surfaceDistanceKm } = estimateMercalliAtLocation(
+  const map = currentMap();
+  map.populationCells.forEach(([x, y, population]) => {
+    const location = unprojectPoint(map, x, y);
+    const { intensity, strongMotionAfterOriginS } = estimateMercalliAtLocation(
       input,
       location.latitude,
       location.longitude,
     );
-    const arrivalS = sArrivalAfterOriginS(surfaceDistanceKm, input.depthKm);
+    const arrivalS = strongMotionAfterOriginS;
     populationImpactTimeline.push({
       arrivalS,
       intensity,
@@ -477,8 +548,8 @@ function updateImpact(input) {
 
   const impact = modelPopulationImpact(
     input,
-    CALIFORNIA_MAP_DATA.bay.populationCells,
-    CALIFORNIA_MAP_DATA.bay.projection,
+    map.populationCells,
+    map.projection,
   );
   populationImpactSummary = impact;
   resetPropagationReveal();
@@ -525,7 +596,11 @@ function resetTerminal() {
     terminalLine("BOOT", "NCEDC live shadow · read-only browser bridge", "muted");
     terminalLine("LIVE", "connecting to same-origin api/live", "muted");
   } else {
-    terminalLine("BOOT", "BAY/CHI impact relay 0.3", "muted");
+    terminalLine(
+      "BOOT",
+      `${currentRegion().eventPrefix.toUpperCase()}/CHI impact relay 0.3`,
+      "muted",
+    );
     terminalLine("MODEL", "scenario input · delivery path simulation", "muted");
   }
   const prompt = document.createElement("div");
@@ -728,11 +803,15 @@ function enterLiveMode() {
   cancelSimulation();
   stopLivePolling();
   activeDashboardMode = "live";
+  configureRegion("bay");
+  applyPreset("san-francisco-1906");
   liveLastHealthKey = null;
   liveLastHealthLogAt = 0;
   liveLastEventId = null;
   resetTerminal();
   setFormLocked(true);
+  elements.dashboardRegion.disabled = true;
+  elements.scenarioContext.hidden = true;
   elements.play.disabled = true;
   elements.pause.disabled = true;
   elements.outputModeLabel.textContent = "Live network output";
@@ -764,6 +843,8 @@ function enterLiveMode() {
 function enterScenarioMode() {
   stopLivePolling();
   activeDashboardMode = "scenario";
+  elements.dashboardRegion.disabled = false;
+  elements.scenarioContext.hidden = activeRegionName !== "southernCalifornia";
   elements.outputModeLabel.textContent = "Simulation output";
   elements.terminalAuthMode.textContent = "HMAC-SHA256 / SIMULATED";
   elements.formNote.textContent = "";
@@ -801,8 +882,55 @@ function epicenterGroup(map, input, overview = false) {
   return group;
 }
 
+function rupturePath(map, input) {
+  if (!input.rupture?.points?.length) return "";
+  return input.rupture.points
+    .map((point, index) => {
+      const projected = projectPoint(map, point.latitude, point.longitude);
+      return `${index === 0 ? "M" : "L"}${projected.x.toFixed(1)},${projected.y.toFixed(1)}`;
+    })
+    .join("");
+}
+
+function drawRupture(input, elapsedS = null) {
+  if (!input.rupture?.points?.length) {
+    elements.ruptureLayer.replaceChildren();
+    return;
+  }
+  const pathData = rupturePath(currentMap(), input);
+  const trace = svgElement("path", { class: "rupture-trace", d: pathData });
+  const progress = svgElement("path", {
+    class: "rupture-progress",
+    d: pathData,
+    pathLength: 1,
+  });
+  const ruptureDurationS = ruptureSamples(input).at(-1).activationAfterOriginS;
+  const fraction =
+    elapsedS === null ? 0 : Math.max(0, Math.min(1, elapsedS / ruptureDurationS));
+  progress.style.strokeDasharray = "1";
+  progress.style.strokeDashoffset = String(1 - fraction);
+  const gate = input.rupture.points.find((point) => point.label === "Cajon Pass");
+  const children = [trace, progress];
+  if (gate) {
+    const point = projectPoint(currentMap(), gate.latitude, gate.longitude);
+    const marker = svgElement("g", {
+      class: "cajon-gate-marker",
+      transform: `translate(${point.x} ${point.y})`,
+      role: "img",
+      "aria-label": "Cajon Pass earthquake gate",
+    });
+    marker.append(svgElement("circle", { r: 5 }));
+    const label = svgElement("text", { x: 8, y: -7 });
+    label.textContent = "CAJON GATE";
+    marker.append(label);
+    children.push(marker);
+  }
+  elements.ruptureLayer.replaceChildren(...children);
+}
+
 function drawEpicenters(input, active = false) {
-  elements.epicenterLayer.replaceChildren(epicenterGroup(CALIFORNIA_MAP_DATA.bay, input));
+  elements.epicenterLayer.replaceChildren(epicenterGroup(currentMap(), input));
+  drawRupture(input, active ? 0 : null);
   document
     .querySelectorAll(".epicenter-ring")
     .forEach((ring) => ring.classList.toggle("active", active));
@@ -922,9 +1050,9 @@ function drawStations(result, input) {
   elements.stationLayer.replaceChildren();
   elements.stationGrid.replaceChildren();
   result.stationResults.forEach((station) => {
-    const bayMarker = markerGroup(station, CALIFORNIA_MAP_DATA.bay, input);
-    bindStationHighlight(bayMarker, station.code);
-    elements.stationLayer.append(bayMarker);
+    const marker = markerGroup(station, currentMap(), input);
+    bindStationHighlight(marker, station.code);
+    elements.stationLayer.append(marker);
     elements.stationGrid.append(stationCard(station, input));
   });
 }
@@ -1052,6 +1180,28 @@ function wavefrontPath(map, input, radiusKm) {
   return `${commands.join("")}Z`;
 }
 
+function sourceWavefrontPath(map, input, elapsedS, velocityKmS) {
+  if (!input.rupture?.points?.length) {
+    const radiusKm = surfaceIntersectionRadiusKm(elapsedS, velocityKmS, input.depthKm);
+    return wavefrontPath(map, input, radiusKm);
+  }
+  const activeSamples = ruptureSamples(input).filter(
+    (sample) => sample.activationAfterOriginS <= elapsedS,
+  );
+  return activeSamples
+    .filter((sample, index) => index % 4 === 0 || index === activeSamples.length - 1)
+    .map((sample) => {
+      const localElapsedS = elapsedS - sample.activationAfterOriginS;
+      const radiusKm = surfaceIntersectionRadiusKm(
+        localElapsedS,
+        velocityKmS,
+        input.depthKm,
+      );
+      return wavefrontPath(map, sample, radiusKm);
+    })
+    .join("");
+}
+
 function updateWavefronts(input, elapsedS) {
   const pRadius = surfaceIntersectionRadiusKm(
     elapsedS,
@@ -1063,10 +1213,15 @@ function updateWavefronts(input, elapsedS) {
     WAVE_MODEL.sVelocityKmS,
     input.depthKm,
   );
-  const bayP = wavefrontPath(CALIFORNIA_MAP_DATA.bay, input, pRadius);
-  const bayS = wavefrontPath(CALIFORNIA_MAP_DATA.bay, input, sRadius);
-  elements.pWave.setAttribute("d", bayP);
-  elements.sWave.setAttribute("d", bayS);
+  elements.pWave.setAttribute(
+    "d",
+    sourceWavefrontPath(currentMap(), input, elapsedS, WAVE_MODEL.pVelocityKmS),
+  );
+  elements.sWave.setAttribute(
+    "d",
+    sourceWavefrontPath(currentMap(), input, elapsedS, WAVE_MODEL.sVelocityKmS),
+  );
+  drawRupture(input, elapsedS);
   elements.pRadius.textContent = `${pRadius.toFixed(0)} km`;
   elements.sRadius.textContent = `${sRadius.toFixed(0)} km`;
 }
@@ -1077,7 +1232,7 @@ function clearWavefronts() {
   elements.sRadius.textContent = "0 km";
 }
 
-function alertCard(revision, eventId, impact) {
+function alertCard(revision, eventId, impact, input) {
   const card = document.createElement("article");
   const isMajor = revision.classification === "major_suspected";
   card.className = `alert-card${isMajor ? " major" : ""}`;
@@ -1088,7 +1243,7 @@ function alertCard(revision, eventId, impact) {
   title.textContent = `${eventDisplayStatus(
     revision.classification,
     revision.confidence,
-  )} — ${describeBayAreaLocation(revision.latitude, revision.longitude)}`;
+  )} — ${describeScenarioLocation(input, revision.latitude, revision.longitude)}`;
   const identity = document.createElement("span");
   identity.textContent = `${eventId} · REV ${revision.revision}`;
   header.append(title, identity);
@@ -1195,7 +1350,7 @@ function dispatchTimelineEvent(state, event) {
     }
     updatePropagationReveal(event.at);
     terminalLine("RX", `${wireId} · signature verified · alert ID matched`, "success", timestamp);
-    alertCard(revision, state.eventId, currentPopulationImpact());
+    alertCard(revision, state.eventId, currentPopulationImpact(), state.input);
     elements.relayStatus.className = "relay-status alerting";
     elements.relayStatus.textContent = "Authenticated alert";
     elements.terminalSummary.textContent = `Latest: ${revision.classification.replaceAll("_", " ")} · revision ${revision.revision}.`;
@@ -1214,7 +1369,7 @@ function dispatchTimelineEvent(state, event) {
   }
   const reason =
     event.outcome === "outside_association_grid"
-      ? "origin outside Bay Area association grid"
+      ? `origin outside ${currentRegion().label} association grid`
       : "insufficient independent station diversity";
   terminalLine("CLOSED", `No alert: ${reason}.`, "danger", timestamp);
   elements.relayStatus.className = "relay-status blocked";
@@ -1227,6 +1382,7 @@ function setFormLocked(locked) {
     control.disabled = locked;
   });
   elements.strike.disabled = locked;
+  elements.dashboardRegion.disabled = locked || activeDashboardMode === "live";
 }
 
 function setPlaybackState(state) {
@@ -1292,6 +1448,9 @@ function renderSimulationFrame(runId) {
   }
 
   if (elapsedS >= state.finishAtS) {
+    updateWavefronts(state.input, state.finishAtS);
+    elements.pWave.setAttribute("d", "");
+    elements.sWave.setAttribute("d", "");
     updatePropagationReveal(state.finishAtS);
     updateStations(state.result, state.finishAtS, state.associatedStations);
     setFormLocked(false);
@@ -1357,12 +1516,12 @@ function updatePreview() {
   }`;
   try {
     const input = readInput();
-    const result = modelEarthquake(input, elements.profile.value);
+    const result = modelEarthquake(input, elements.profile.value, activeRegionName);
     const watch = result.revisions[0];
     const major = result.revisions.find((revision) => revision.classification === "major_suspected");
     elements.metricWatch.textContent = watch ? formatSeconds(watch.detectedAfterOriginS) : "NONE";
     elements.metricMajor.textContent = major ? formatSeconds(major.detectedAfterOriginS) : "—";
-    elements.metricNetwork.textContent = `${result.stationResults.filter((station) => station.triggered).length} / 8`;
+    elements.metricNetwork.textContent = `${result.stationResults.filter((station) => station.triggered).length} / ${result.stationResults.length}`;
     updateImpact(input);
     drawEpicenters(input);
     drawStations(result, input);
@@ -1372,7 +1531,7 @@ function updatePreview() {
     if (result.revisions.length) {
       elements.formNote.textContent = "";
     } else if (result.outcome === "outside_association_grid") {
-      elements.formNote.textContent = "This origin is outside the Bay Area association grid.";
+      elements.formNote.textContent = `This origin is outside the ${currentRegion().label} association grid.`;
     } else {
       elements.formNote.textContent = "This input does not produce four-site network agreement.";
     }
@@ -1389,7 +1548,7 @@ function runSimulation(event) {
 
   const input = readInput();
   const speed = Number.parseFloat(elements.speed.value);
-  const result = modelEarthquake(input, elements.profile.value);
+  const result = modelEarthquake(input, elements.profile.value, activeRegionName);
   const impact = updateImpact(input);
   const esImpact = modelEsNearMonthImpact(impact.impactIndex);
   const originTime = new Date();
@@ -1402,7 +1561,7 @@ function runSimulation(event) {
     result,
     impact,
     originTime,
-    eventId: `bay-${originTime.getTime()}`,
+    eventId: `${currentRegion().eventPrefix}-${originTime.getTime()}`,
     timeline,
     nextEventIndex: 0,
     associatedStations: new Set(),
@@ -1428,6 +1587,15 @@ function runSimulation(event) {
     "",
     originTime,
   );
+  if (input.rupture) {
+    const rupture = ruptureSamples(input);
+    terminalLine(
+      "RUPTURE",
+      `${input.rupture.label} · ${rupture.at(-1).distanceAlongRuptureKm.toFixed(0)} km · ${input.rupture.ruptureVelocityKmS.toFixed(1)} km/s · geometry is a scenario proxy`,
+      "danger",
+      originTime,
+    );
+  }
   terminalLine(
     "MODEL",
     `P ${WAVE_MODEL.pVelocityKmS.toFixed(1)} km/s · S ${WAVE_MODEL.sVelocityKmS.toFixed(1)} km/s · peak MMI ${impact.maximumMmi.toFixed(1)} · impact ${impact.impactIndex.toFixed(1)} · ES ${formatExpectedChangePercent(esImpact.expectedChangePercent)}`,
@@ -1456,10 +1624,9 @@ function resetSimulation() {
 elements.preset.addEventListener("change", () => {
   const preset = PRESETS[elements.preset.value];
   if (preset) {
-    elements.magnitude.value = preset.magnitude.toFixed(1);
-    elements.depth.value = preset.depthKm.toFixed(1);
-    elements.latitude.value = preset.latitude.toFixed(3);
-    elements.longitude.value = preset.longitude.toFixed(3);
+    const presetRegion = preset.region ?? "bay";
+    if (presetRegion !== activeRegionName) configureRegion(presetRegion);
+    applyPreset(elements.preset.value);
   }
   updatePreview();
 });
@@ -1474,6 +1641,13 @@ elements.speed.addEventListener("change", updatePreview);
 elements.dashboardMode.addEventListener("change", () => {
   if (elements.dashboardMode.value === "live") enterLiveMode();
   else enterScenarioMode();
+});
+elements.dashboardRegion.addEventListener("change", () => {
+  cancelSimulation();
+  configureRegion(elements.dashboardRegion.value);
+  applyPreset(defaultPresetForRegion(activeRegionName));
+  resetTerminal();
+  updatePreview();
 });
 elements.form.addEventListener("submit", runSimulation);
 elements.reset.addEventListener("click", resetSimulation);
@@ -1513,8 +1687,16 @@ function updateClock() {
   elements.clock.textContent = `UTC ${clockText().slice(0, 8)}`;
 }
 
-drawStaticMaps();
 const query = new URLSearchParams(window.location.search);
+const requestedPreset = PRESETS[query.get("preset")] ? query.get("preset") : null;
+const requestedRegion =
+  query.get("region") === "southernCalifornia" || query.get("view") === "cajon"
+    ? "southernCalifornia"
+    : requestedPreset
+      ? PRESETS[requestedPreset].region ?? "bay"
+      : "bay";
+configureRegion(requestedRegion);
+applyPreset(requestedPreset ?? defaultPresetForRegion(requestedRegion));
 if (["1", "5", "20"].includes(query.get("speed"))) {
   elements.speed.value = query.get("speed");
 }

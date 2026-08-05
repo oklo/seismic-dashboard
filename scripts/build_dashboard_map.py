@@ -31,7 +31,8 @@ SOURCE_LABEL = (
 )
 CALIFORNIA_BOUNDS = (-124.65, 32.3, -114.0, 42.1)
 BAY_BOUNDS = (-123.95, 36.95, -121.45, 38.55)
-FAULT_NAMES = (
+SOUTHERN_CALIFORNIA_BOUNDS = (-119.4, 32.7, -115.3, 35.1)
+BAY_FAULT_NAMES = (
     "San Andreas fault zone",
     "San Gregorio fault zone",
     "Hayward fault zone",
@@ -41,6 +42,14 @@ FAULT_NAMES = (
     "Green Valley fault",
     "West Napa fault",
     "Greenville fault zone",
+)
+SOUTHERN_CALIFORNIA_FAULT_NAMES = (
+    "San Andreas fault zone",
+    "San Jacinto fault",
+    "Elsinore fault zone",
+    "Newport-Inglewood fault zone",
+    "Sierra Madre fault zone",
+    "Garlock fault zone",
 )
 
 
@@ -278,7 +287,9 @@ def _map_data(
 
 
 def _population_cells(
-    features: list[dict[str, Any]], projection: Projection
+    features: list[dict[str, Any]],
+    projection: Projection,
+    bounds: tuple[float, float, float, float],
 ) -> tuple[list[list[float | int]], int]:
     cells: dict[tuple[int, int], int] = {}
     for feature in features:
@@ -289,8 +300,8 @@ def _population_cells(
         latitude = float(properties["INTPTLAT"])
         longitude = float(properties["INTPTLON"])
         if not (
-            BAY_BOUNDS[0] <= longitude <= BAY_BOUNDS[2]
-            and BAY_BOUNDS[1] <= latitude <= BAY_BOUNDS[3]
+            bounds[0] <= longitude <= bounds[2]
+            and bounds[1] <= latitude <= bounds[3]
         ):
             continue
         x, y = projection.point(longitude, latitude)
@@ -304,19 +315,63 @@ def _population_cells(
 
 
 def _fault_data(
-    features: list[dict[str, Any]], projection: Projection
+    features: list[dict[str, Any]],
+    projection: Projection,
+    fault_names: tuple[str, ...],
 ) -> list[dict[str, str]]:
-    paths: dict[str, list[str]] = {name: [] for name in FAULT_NAMES}
+    paths: dict[tuple[str, str], list[str]] = {}
     for feature in features:
         name = feature["properties"].get("fault_name")
+        section_name = feature["properties"].get("section_name") or ""
         geometry = feature.get("geometry")
-        if name in paths and geometry:
-            paths[name].append(_line_path(geometry, projection))
+        if name in fault_names and geometry:
+            paths.setdefault((name, section_name), []).append(
+                _line_path(geometry, projection)
+            )
     return [
-        {"name": name, "path": "".join(paths[name])}
-        for name in FAULT_NAMES
-        if paths[name]
+        {"name": name, "sectionName": section_name, "path": "".join(path_parts)}
+        for (name, section_name), path_parts in sorted(paths.items())
+        if path_parts
     ]
+
+
+def _build_region(
+    state: dict[str, Any],
+    counties: list[dict[str, Any]],
+    bounds: tuple[float, float, float, float],
+    fault_names: tuple[str, ...],
+) -> dict[str, Any]:
+    projection = _projection(bounds, 840, 680, 16)
+    region = _map_data(state, counties, projection, bounds, 0.0015)
+    block_collection = _query(
+        BLOCK_URL,
+        "OBJECTID,GEOID,POP100,INTPTLAT,INTPTLON",
+        bounds=bounds,
+        return_geometry=False,
+    )
+    population_cells, population_total = _population_cells(
+        block_collection["features"], projection, bounds
+    )
+    fault_where = "fault_name IN (" + ",".join(
+        f"'{name}'" for name in fault_names
+    ) + ")"
+    fault_collection = _query(
+        FAULT_URL,
+        "OBJECTID,fault_name,section_name,fault_id,section_id,age,slip_rate,class,"
+        "mapped_certainty",
+        where=fault_where,
+        bounds=bounds,
+        page_size=2_000,
+    )
+    region["populationCells"] = population_cells
+    region["populationTotal"] = population_total
+    region["peoplePerCellNote"] = (
+        "2020 Census populated-block internal points; 1.5 px aggregation"
+    )
+    region["faults"] = _fault_data(
+        fault_collection["features"], projection, fault_names
+    )
+    return region
 
 
 def build(output: Path) -> None:
@@ -324,7 +379,6 @@ def build(output: Path) -> None:
     county_collection = _query(COUNTY_URL, "GEOID,NAME,CENTLAT,CENTLON")
     state = state_collection["features"][0]
     counties = county_collection["features"]
-    bay_projection = _projection(BAY_BOUNDS, 840, 680, 16)
     california = _map_data(
         state,
         counties,
@@ -332,37 +386,13 @@ def build(output: Path) -> None:
         CALIFORNIA_BOUNDS,
         0.004,
     )
-    bay = _map_data(
+    bay = _build_region(state, counties, BAY_BOUNDS, BAY_FAULT_NAMES)
+    southern_california = _build_region(
         state,
         counties,
-        bay_projection,
-        BAY_BOUNDS,
-        0.0015,
+        SOUTHERN_CALIFORNIA_BOUNDS,
+        SOUTHERN_CALIFORNIA_FAULT_NAMES,
     )
-    block_collection = _query(
-        BLOCK_URL,
-        "OBJECTID,GEOID,POP100,INTPTLAT,INTPTLON",
-        bounds=BAY_BOUNDS,
-        return_geometry=False,
-    )
-    population_cells, population_total = _population_cells(
-        block_collection["features"], bay_projection
-    )
-    fault_where = "fault_name IN (" + ",".join(
-        f"'{name}'" for name in FAULT_NAMES
-    ) + ")"
-    fault_collection = _query(
-        FAULT_URL,
-        "OBJECTID,fault_name,section_name,fault_id,section_id,age,slip_rate,class,"
-        "mapped_certainty",
-        where=fault_where,
-        bounds=BAY_BOUNDS,
-        page_size=2_000,
-    )
-    bay["populationCells"] = population_cells
-    bay["populationTotal"] = population_total
-    bay["peoplePerCellNote"] = "2020 Census populated-block internal points; 1.5 px aggregation"
-    bay["faults"] = _fault_data(fault_collection["features"], bay_projection)
     payload = {
         "source": SOURCE_LABEL,
         "boundarySourceUrl": BOUNDARY_SERVICE,
@@ -371,6 +401,7 @@ def build(output: Path) -> None:
         "faultSourceUrl": "https://doi.org/10.5066/P9BCVRCK",
         "california": california,
         "bay": bay,
+        "southernCalifornia": southern_california,
     }
     compact = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
     output.write_text(

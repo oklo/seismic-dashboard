@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="Interactive Bay Area earthquake propagation and population-impact simulator."
+      content="Interactive California earthquake propagation and population-impact simulator."
     >
     <title>Quake Impact → Market Impact</title>
     <link rel="icon"
@@ -72,6 +72,7 @@
                     <g id="population-layer" aria-label="2020 Census population dot density"></g>
                     <g id="population-impact-layer" aria-hidden="true"></g>
                     <g id="fault-layer" aria-label="USGS Quaternary fault traces"></g>
+                    <g id="rupture-layer" aria-label="Scenario finite-fault rupture"></g>
                     <g id="california-inset" class="california-inset"
                       transform="translate(22 330) scale(.68)"
                       aria-label="California locator inset"></g>
@@ -149,13 +150,26 @@
 
             <aside class="right-rail">
               <section class="controls-panel" aria-label="Dashboard and scenario controls">
-                <label class="mode-switch" for="dashboard-mode">
-                  <span>Display</span>
-                  <select id="dashboard-mode" name="dashboard-mode">
-                    <option value="scenario">Scenario simulator</option>
-                    <option value="live">Live NCEDC shadow</option>
-                  </select>
-                </label>
+                <div class="view-switches">
+                  <label class="mode-switch" for="dashboard-mode">
+                    <span>Display</span>
+                    <select id="dashboard-mode" name="dashboard-mode">
+                      <option value="scenario">Scenario simulator</option>
+                      <option value="live">Live NCEDC shadow</option>
+                    </select>
+                  </label>
+                  <label class="mode-switch region-switch" for="dashboard-region">
+                    <span>Dashboard view</span>
+                    <select id="dashboard-region" name="dashboard-region">
+                      <option value="bay">SF Bay Area</option>
+                      <option value="southernCalifornia">SoCal · Cajon</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="scenario-context" id="scenario-context" hidden>
+                  <b>CAJON GATE · SCENARIO PROXY</b>
+                  <span>Joint San Jacinto–San Andreas rupture; hazard study, not a time prediction. ShakeOut losses are a separate benchmark.</span>
+                </div>
                 <form id="quake-form">
                   <label class="field field-wide">
                     <span>Earthquake</span>
@@ -167,6 +181,7 @@
                       <option value="san-francisco">San Francisco scenario · M 7.0</option>
                       <option value="hayward">Hayward scenario · M 6.8</option>
                       <option value="san-jose">San Jose scenario · M 6.5</option>
+                      <option value="cajon-gate-2026">Cajon gate-open proxy · M 7.8</option>
                       <option value="custom">Custom / map placement</option>
                     </select>
                   </label>
@@ -236,7 +251,7 @@
               <section class="station-section" aria-label="Station telemetry streams">
                 <div class="station-section-heading">
                   <span>STATION STREAMS</span>
-                  <small>BK · HNZ</small>
+                  <small id="station-network-label">BK · HNZ</small>
                 </div>
                 <div class="station-grid" id="station-grid"></div>
               </section>

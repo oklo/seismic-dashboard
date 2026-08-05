@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CAJON_GATE_RUPTURE,
   FEED_PROFILES,
   PRESETS,
+  REGIONS,
+  SOUTHERN_CALIFORNIA_STATIONS,
   STATIONS,
   WAVE_MODEL,
   describeBayAreaLocation,
+  describeLocation,
   estimateExposurePeakAccelerationG,
   eventDisplayStatus,
   haversineKm,
@@ -14,6 +18,7 @@ import {
   modelEarthquake,
   modelEsNearMonthImpact,
   modelPopulationImpact,
+  ruptureSamples,
   surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
 
@@ -38,6 +43,44 @@ test("historical presets carry the reviewed or reconstructed geophysical details
     [6.9, 17.2, 7.9, 11.7, 6.8],
   );
   assert.match(PRESETS["hayward-1868"].provenance, /prox/);
+});
+
+test("Cajon gate view uses current professional CI accelerometer sites", () => {
+  assert.equal(SOUTHERN_CALIFORNIA_STATIONS.length, 8);
+  assert.equal(new Set(SOUTHERN_CALIFORNIA_STATIONS.map((station) => station.id)).size, 8);
+  assert.ok(SOUTHERN_CALIFORNIA_STATIONS.every((station) => station.id.startsWith("CI.")));
+  assert.ok(SOUTHERN_CALIFORNIA_STATIONS.every((station) => station.id.endsWith(".HNZ")));
+  assert.equal(REGIONS.southernCalifornia.stations, SOUTHERN_CALIFORNIA_STATIONS);
+  assert.equal(PRESETS["cajon-gate-2026"].magnitude, 7.8);
+  assert.equal(PRESETS["cajon-gate-2026"].rupture, CAJON_GATE_RUPTURE);
+});
+
+test("Cajon gate scenario propagates across a finite multi-fault source", () => {
+  const input = PRESETS["cajon-gate-2026"];
+  const samples = ruptureSamples(input);
+  const result = modelEarthquake(input, "dart", "southernCalifornia");
+  const vincent = result.stationResults.find((station) => station.code === "VCS");
+  const pointResult = modelEarthquake(
+    { ...input, rupture: undefined },
+    "dart",
+    "southernCalifornia",
+  );
+  const pointSourceVincent = pointResult.stationResults.find(
+    (station) => station.code === "VCS",
+  );
+
+  assert.ok(samples.length > input.rupture.points.length);
+  assert.ok(samples.at(-1).distanceAlongRuptureKm > 250);
+  assert.ok(samples.at(-1).activationAfterOriginS > 90);
+  assert.ok(vincent.surfaceDistanceKm < 15);
+  assert.ok(vincent.surfaceDistanceKm < pointSourceVincent.surfaceDistanceKm);
+  assert.ok(vincent.peakAccelerationG > pointSourceVincent.peakAccelerationG);
+  assert.equal(result.outcome, "alerted");
+  assert.deepEqual(
+    result.revisions.map((revision) => revision.stationCount),
+    [4, 6, 8],
+  );
+  assert.equal(result.revisions[1].classification, "major_suspected");
 });
 
 test("South Napa reference produces ordered watch and major revisions", () => {
@@ -163,6 +206,10 @@ test("trader display grades confidence and adds concise Bay Area geography", () 
   assert.equal(
     describeBayAreaLocation(PRESETS["san-jose"].latitude, PRESETS["san-jose"].longitude),
     "SF Bay Area, San Jose",
+  );
+  assert.equal(
+    describeLocation(34.31, -117.47, "southernCalifornia"),
+    "Southern California, Cajon Pass",
   );
 });
 

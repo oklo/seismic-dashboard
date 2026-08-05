@@ -1,4 +1,4 @@
-export const STATIONS = Object.freeze([
+export const BAY_AREA_STATIONS = Object.freeze([
   {
     id: "BK.BKS.00.HNZ",
     code: "BKS",
@@ -57,6 +57,87 @@ export const STATIONS = Object.freeze([
   },
 ]);
 
+// Current CI HNZ accelerometer metadata queried from the EarthScope FDSN station
+// service on 2026-08-05. These sites make the Southern California scenario
+// spatially meaningful; they are not yet a validated live collector profile.
+export const SOUTHERN_CALIFORNIA_STATIONS = Object.freeze([
+  {
+    id: "CI.USC..HNZ",
+    code: "USC",
+    siteName: "University of Southern California",
+    latitude: 34.01919,
+    longitude: -118.28631,
+  },
+  {
+    id: "CI.RUS..HNZ",
+    code: "RUS",
+    siteName: "Rush",
+    latitude: 34.05075,
+    longitude: -118.08078,
+  },
+  {
+    id: "CI.WLT..HNZ",
+    code: "WLT",
+    siteName: "Walnut",
+    latitude: 34.00948,
+    longitude: -117.95077,
+  },
+  {
+    id: "CI.PDU..HNZ",
+    code: "PDU",
+    siteName: "Padua",
+    latitude: 34.1207,
+    longitude: -117.63808,
+  },
+  {
+    id: "CI.SVD..HNZ",
+    code: "SVD",
+    siteName: "Seven Oaks",
+    latitude: 34.10647,
+    longitude: -117.09822,
+  },
+  {
+    id: "CI.RVR..HNZ",
+    code: "RVR",
+    siteName: "Riverside",
+    latitude: 33.99351,
+    longitude: -117.37545,
+  },
+  {
+    id: "CI.DEV..HNZ",
+    code: "DEV",
+    siteName: "Devers",
+    latitude: 33.93597,
+    longitude: -116.57794,
+  },
+  {
+    id: "CI.VCS..HNZ",
+    code: "VCS",
+    siteName: "Vincent",
+    latitude: 34.48372,
+    longitude: -118.11781,
+  },
+]);
+
+// Backwards-compatible name for the physically validated eight-site Bay profile.
+export const STATIONS = BAY_AREA_STATIONS;
+
+export const CAJON_GATE_RUPTURE = Object.freeze({
+  label: "San Jacinto–Cajon–Mojave gate-open proxy",
+  ruptureVelocityKmS: 2.8,
+  points: Object.freeze([
+    Object.freeze({ latitude: 33.5, longitude: -116.52 }),
+    Object.freeze({ latitude: 33.7, longitude: -116.76 }),
+    Object.freeze({ latitude: 33.9, longitude: -117.02 }),
+    Object.freeze({ latitude: 34.08, longitude: -117.25 }),
+    Object.freeze({ latitude: 34.31, longitude: -117.47, label: "Cajon Pass" }),
+    Object.freeze({ latitude: 34.44, longitude: -117.75 }),
+    Object.freeze({ latitude: 34.57, longitude: -118.05 }),
+    Object.freeze({ latitude: 34.74, longitude: -118.4 }),
+    Object.freeze({ latitude: 34.92, longitude: -118.75 }),
+  ]),
+});
+
 export const PRESETS = Object.freeze({
   "loma-prieta-1989": {
     latitude: 37.036,
@@ -83,6 +164,16 @@ export const PRESETS = Object.freeze({
   "san-francisco": { latitude: 37.7749, longitude: -122.4194, depthKm: 8.0, magnitude: 7.0 },
   hayward: { latitude: 37.68, longitude: -122.10, depthKm: 8.0, magnitude: 6.8 },
   "san-jose": { latitude: 37.3382, longitude: -121.8863, depthKm: 9.0, magnitude: 6.5 },
+  "cajon-gate-2026": {
+    latitude: 33.5,
+    longitude: -116.52,
+    depthKm: 8.0,
+    magnitude: 7.8,
+    region: "southernCalifornia",
+    rupture: CAJON_GATE_RUPTURE,
+    provenance:
+      "Scenario proxy · Burkhard et al. 2026 Cajon gate geometry + USGS ShakeOut M7.8 scale",
+  },
 });
 
 export const FEED_PROFILES = Object.freeze({
@@ -125,15 +216,50 @@ const BAY_AREA_PLACES = Object.freeze([
   { name: "Santa Rosa", latitude: 38.4405, longitude: -122.7144 },
   { name: "Santa Cruz", latitude: 36.9741, longitude: -122.0308 },
 ]);
+const SOUTHERN_CALIFORNIA_PLACES = Object.freeze([
+  { name: "Cajon Pass", latitude: 34.31, longitude: -117.47 },
+  { name: "Los Angeles", latitude: 34.0522, longitude: -118.2437 },
+  { name: "San Bernardino", latitude: 34.1083, longitude: -117.2898 },
+  { name: "Riverside", latitude: 33.9806, longitude: -117.3755 },
+  { name: "Palm Springs", latitude: 33.8303, longitude: -116.5453 },
+  { name: "Coachella Valley", latitude: 33.72, longitude: -116.22 },
+  { name: "Anaheim", latitude: 33.8366, longitude: -117.9143 },
+  { name: "Long Beach", latitude: 33.7701, longitude: -118.1937 },
+  { name: "Palmdale", latitude: 34.5794, longitude: -118.1165 },
+]);
 const MIN_STATION_SPAN_KM = 20.0;
 const TRIGGER_PEAK_G = 0.00012;
 const MAJOR_MEDIAN_PEAK_G = 0.00075;
 const FRESHNESS_CEILING_S = 15.0;
-const ASSOCIATION_GRID = Object.freeze({
-  latitudeMin: 37.0,
-  latitudeMax: 38.5,
-  longitudeMin: -123.0,
-  longitudeMax: -121.2,
+export const REGIONS = Object.freeze({
+  bay: Object.freeze({
+    label: "SF Bay Area",
+    mapKey: "bay",
+    eventPrefix: "bay",
+    networkLabel: "BK · HNZ",
+    stations: BAY_AREA_STATIONS,
+    places: BAY_AREA_PLACES,
+    associationGrid: Object.freeze({
+      latitudeMin: 37.0,
+      latitudeMax: 38.5,
+      longitudeMin: -123.0,
+      longitudeMax: -121.2,
+    }),
+  }),
+  southernCalifornia: Object.freeze({
+    label: "Southern California",
+    mapKey: "southernCalifornia",
+    eventPrefix: "socal",
+    networkLabel: "CI · HNZ",
+    stations: SOUTHERN_CALIFORNIA_STATIONS,
+    places: SOUTHERN_CALIFORNIA_PLACES,
+    associationGrid: Object.freeze({
+      latitudeMin: 32.7,
+      latitudeMax: 35.1,
+      longitudeMin: -119.4,
+      longitudeMax: -115.3,
+    }),
+  }),
 });
 
 export function haversineKm(latitudeA, longitudeA, latitudeB, longitudeB) {
@@ -146,6 +272,83 @@ export function haversineKm(latitudeA, longitudeA, latitudeB, longitudeB) {
       Math.cos(toRadians(latitudeB)) *
       Math.sin(deltaLongitude / 2) ** 2;
   return 6371.0088 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const RUPTURE_SAMPLE_CACHE = new WeakMap();
+
+export function ruptureSamples(input) {
+  if (!input.rupture?.points?.length) {
+    return [
+      {
+        latitude: input.latitude,
+        longitude: input.longitude,
+        activationAfterOriginS: 0,
+      },
+    ];
+  }
+  const cached = RUPTURE_SAMPLE_CACHE.get(input.rupture);
+  if (cached) return cached;
+  const samples = [];
+  let accumulatedKm = 0;
+  input.rupture.points.forEach((point, index) => {
+    if (index === 0) {
+      samples.push({ ...point, activationAfterOriginS: 0, distanceAlongRuptureKm: 0 });
+      return;
+    }
+    const previous = input.rupture.points[index - 1];
+    const segmentKm = haversineKm(
+      previous.latitude,
+      previous.longitude,
+      point.latitude,
+      point.longitude,
+    );
+    const steps = Math.max(1, Math.ceil(segmentKm / 6));
+    for (let step = 1; step <= steps; step += 1) {
+      const fraction = step / steps;
+      const distanceAlongRuptureKm = accumulatedKm + segmentKm * fraction;
+      samples.push({
+        latitude: previous.latitude + (point.latitude - previous.latitude) * fraction,
+        longitude: previous.longitude + (point.longitude - previous.longitude) * fraction,
+        activationAfterOriginS:
+          distanceAlongRuptureKm / input.rupture.ruptureVelocityKmS,
+        distanceAlongRuptureKm,
+      });
+    }
+    accumulatedKm += segmentKm;
+  });
+  const frozen = Object.freeze(samples.map((sample) => Object.freeze(sample)));
+  RUPTURE_SAMPLE_CACHE.set(input.rupture, frozen);
+  return frozen;
+}
+
+export function sourceSiteMetrics(input, latitude, longitude) {
+  let surfaceDistanceKm = Number.POSITIVE_INFINITY;
+  let arrivalAfterOriginS = Number.POSITIVE_INFINITY;
+  let strongMotionAfterOriginS = Number.POSITIVE_INFINITY;
+  ruptureSamples(input).forEach((sample) => {
+    const distanceKm = haversineKm(
+      sample.latitude,
+      sample.longitude,
+      latitude,
+      longitude,
+    );
+    const hypocentralDistanceKm = Math.hypot(distanceKm, input.depthKm);
+    surfaceDistanceKm = Math.min(surfaceDistanceKm, distanceKm);
+    arrivalAfterOriginS = Math.min(
+      arrivalAfterOriginS,
+      sample.activationAfterOriginS + hypocentralDistanceKm / WAVE_MODEL.pVelocityKmS,
+    );
+    strongMotionAfterOriginS = Math.min(
+      strongMotionAfterOriginS,
+      sample.activationAfterOriginS + hypocentralDistanceKm / WAVE_MODEL.sVelocityKmS,
+    );
+  });
+  return {
+    surfaceDistanceKm,
+    hypocentralDistanceKm: Math.hypot(surfaceDistanceKm, input.depthKm),
+    arrivalAfterOriginS,
+    strongMotionAfterOriginS,
+  };
 }
 
 export function surfaceIntersectionRadiusKm(elapsedS, velocityKmS, depthKm) {
@@ -185,16 +388,22 @@ export function modelEsNearMonthImpact(impactIndex) {
   };
 }
 
-export function describeBayAreaLocation(latitude, longitude) {
+export function describeLocation(latitude, longitude, regionName = "bay") {
   if (![latitude, longitude].every(Number.isFinite)) {
     throw new TypeError("Location coordinates must be numbers.");
   }
-  const nearest = BAY_AREA_PLACES.map((place) => ({
+  const region = REGIONS[regionName];
+  if (!region) throw new RangeError(`Unknown region: ${regionName}`);
+  const nearest = region.places.map((place) => ({
     ...place,
     distanceKm: haversineKm(latitude, longitude, place.latitude, place.longitude),
   })).sort((placeA, placeB) => placeA.distanceKm - placeB.distanceKm)[0];
   const qualifier = nearest.distanceKm < 18 ? nearest.name : `near ${nearest.name}`;
-  return `SF Bay Area, ${qualifier}`;
+  return `${region.label}, ${qualifier}`;
+}
+
+export function describeBayAreaLocation(latitude, longitude) {
+  return describeLocation(latitude, longitude, "bay");
 }
 
 export function eventDisplayStatus(classification, confidence) {
@@ -235,15 +444,16 @@ export function modifiedMercalliFromPga(pgaG) {
 }
 
 export function estimateMercalliAtLocation(input, latitude, longitude) {
-  const surfaceDistanceKm = haversineKm(
-    input.latitude,
-    input.longitude,
+  const sourceMetrics = sourceSiteMetrics(
+    input,
     latitude,
     longitude,
   );
-  const hypocentralDistanceKm = Math.hypot(surfaceDistanceKm, input.depthKm);
-  const pgaG = estimateExposurePeakAccelerationG(input.magnitude, hypocentralDistanceKm);
-  return { intensity: modifiedMercalliFromPga(pgaG), pgaG, surfaceDistanceKm };
+  const pgaG = estimateExposurePeakAccelerationG(
+    input.magnitude,
+    sourceMetrics.hypocentralDistanceKm,
+  );
+  return { intensity: modifiedMercalliFromPga(pgaG), pgaG, ...sourceMetrics };
 }
 
 export function modelPopulationImpact(input, populationCells, projection) {
@@ -347,41 +557,61 @@ function validateInput(input) {
   if (input.latitude < -90 || input.latitude > 90) throw new RangeError("Latitude is outside its valid range.");
   if (input.longitude < -180 || input.longitude > 180) throw new RangeError("Longitude is outside its valid range.");
   if (input.depthKm < 0 || input.depthKm > 700) throw new RangeError("Depth is outside the model range.");
+  if (input.rupture) {
+    if (
+      !Number.isFinite(input.rupture.ruptureVelocityKmS) ||
+      input.rupture.ruptureVelocityKmS <= 0
+    ) {
+      throw new RangeError("Rupture velocity must be positive.");
+    }
+    if (
+      !Array.isArray(input.rupture.points) ||
+      input.rupture.points.length < 2 ||
+      !input.rupture.points.every((point) =>
+        [point.latitude, point.longitude].every(Number.isFinite),
+      )
+    ) {
+      throw new TypeError("Finite rupture requires at least two valid coordinates.");
+    }
+  }
 }
 
-export function modelEarthquake(input, profileName = "dart") {
+export function modelEarthquake(input, profileName = "dart", regionName = null) {
   validateInput(input);
   const profile = FEED_PROFILES[profileName];
   if (!profile) throw new RangeError(`Unknown feed profile: ${profileName}`);
+  const selectedRegionName = regionName ?? input.region ?? "bay";
+  const region = REGIONS[selectedRegionName];
+  if (!region) throw new RangeError(`Unknown region: ${selectedRegionName}`);
 
-  const stationResults = STATIONS.map((station) => {
-    const surfaceDistanceKm = haversineKm(
-      input.latitude,
-      input.longitude,
+  const stationResults = region.stations.map((station) => {
+    const sourceMetrics = sourceSiteMetrics(
+      input,
       station.latitude,
       station.longitude,
     );
-    const hypocentralDistanceKm = Math.hypot(surfaceDistanceKm, input.depthKm);
-    const peakAccelerationG = estimatePeakAccelerationG(input.magnitude, hypocentralDistanceKm);
+    const peakAccelerationG = estimatePeakAccelerationG(
+      input.magnitude,
+      sourceMetrics.hypocentralDistanceKm,
+    );
     return {
       ...station,
-      surfaceDistanceKm,
-      hypocentralDistanceKm,
-      arrivalAfterOriginS: hypocentralDistanceKm / WAVE_MODEL.pVelocityKmS,
-      strongMotionAfterOriginS: hypocentralDistanceKm / WAVE_MODEL.sVelocityKmS,
+      ...sourceMetrics,
       peakAccelerationG,
       triggered: peakAccelerationG >= TRIGGER_PEAK_G,
     };
   }).sort((a, b) => a.arrivalAfterOriginS - b.arrivalAfterOriginS);
 
   const insideAssociationGrid =
-    input.latitude >= ASSOCIATION_GRID.latitudeMin &&
-    input.latitude <= ASSOCIATION_GRID.latitudeMax &&
-    input.longitude >= ASSOCIATION_GRID.longitudeMin &&
-    input.longitude <= ASSOCIATION_GRID.longitudeMax;
+    input.latitude >= region.associationGrid.latitudeMin &&
+    input.latitude <= region.associationGrid.latitudeMax &&
+    input.longitude >= region.associationGrid.longitudeMin &&
+    input.longitude <= region.associationGrid.longitudeMax;
   if (!insideAssociationGrid) {
     return {
       profile,
+      region,
+      regionName: selectedRegionName,
       stationResults,
       revisions: [],
       outcome: "outside_association_grid",
@@ -393,6 +623,8 @@ export function modelEarthquake(input, profileName = "dart") {
   if (!watchGroup) {
     return {
       profile,
+      region,
+      regionName: selectedRegionName,
       stationResults,
       revisions: [],
       outcome: "insufficient_station_diversity",
@@ -434,6 +666,8 @@ export function modelEarthquake(input, profileName = "dart") {
 
   return {
     profile,
+    region,
+    regionName: selectedRegionName,
     stationResults,
     revisions,
     outcome: revisions.some((revision) => revision.fresh) ? "alerted" : "stale_suppressed",
