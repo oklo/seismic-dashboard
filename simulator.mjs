@@ -236,6 +236,7 @@ export const PRESETS = Object.freeze({
     longitude: -121.88,
     depthKm: 17.2,
     magnitude: 6.9,
+    shakeMapKey: "loma-prieta-1989",
     provenance: "USGS reviewed origin · 1989-10-18",
   },
   "san-francisco-1906": {
@@ -243,6 +244,7 @@ export const PRESETS = Object.freeze({
     longitude: -122.55,
     depthKm: 11.7,
     magnitude: 7.9,
+    shakeMapKey: "san-francisco-1906",
     provenance: "USGS reviewed origin · 1906-04-18",
   },
   "hayward-1868": {
@@ -252,7 +254,22 @@ export const PRESETS = Object.freeze({
     magnitude: 6.8,
     provenance: "USGS M6.8 estimate · location/depth are scenario proxies",
   },
-  "south-napa": { latitude: 38.215, longitude: -122.312, depthKm: 11.1, magnitude: 6.0 },
+  "south-napa": {
+    latitude: 38.215,
+    longitude: -122.312,
+    depthKm: 11.1,
+    magnitude: 6.0,
+    shakeMapKey: "south-napa",
+    provenance: "USGS reviewed origin and preferred ShakeMap · 2014-08-24",
+  },
+  "haywired-m7.05": {
+    latitude: 37.67,
+    longitude: -122.08,
+    depthKm: 8.0,
+    magnitude: 7.05,
+    shakeMapKey: "haywired-m7.05",
+    provenance: "USGS HayWired M7.05 planning-scenario ShakeMap",
+  },
   "san-francisco": { latitude: 37.7749, longitude: -122.4194, depthKm: 8.0, magnitude: 7.0 },
   hayward: { latitude: 37.68, longitude: -122.10, depthKm: 8.0, magnitude: 6.8 },
   "san-jose": { latitude: 37.3382, longitude: -121.8863, depthKm: 9.0, magnitude: 6.5 },
@@ -271,6 +288,7 @@ export const PRESETS = Object.freeze({
     longitude: -124.9,
     depthKm: 15.0,
     magnitude: 9.0,
+    shakeMapKey: "cascadia-1700",
     region: "pacificNorthwest",
     rupture: CASCADIA_1700_RUPTURE,
     shakingDurationS: 300,
@@ -289,6 +307,21 @@ export const WAVE_MODEL = Object.freeze({
   pVelocityKmS: 5.8,
   sVelocityKmS: 3.4,
   shakingDurationS: 5.0,
+});
+
+// FEMA Hazus 6.1, Earthquake Model Technical Manual, section 4.2.2.1.2.
+// Probabilities represent the fraction of a mapped susceptibility cell expected
+// to liquefy, not the chance that every point or structure in the cell fails.
+export const HAZUS_LIQUEFACTION_MODEL = Object.freeze({
+  version: "FEMA Hazus 6.1",
+  defaultGroundwaterDepthFeet: 5,
+  susceptibility: Object.freeze({
+    VH: Object.freeze({ slope: 9.09, intercept: -0.82, mapUnitFraction: 0.25 }),
+    H: Object.freeze({ slope: 7.67, intercept: -0.92, mapUnitFraction: 0.2 }),
+    M: Object.freeze({ slope: 6.67, intercept: -1.0, mapUnitFraction: 0.1 }),
+    L: Object.freeze({ slope: 5.57, intercept: -1.18, mapUnitFraction: 0.05 }),
+    VL: Object.freeze({ slope: 4.16, intercept: -1.08, mapUnitFraction: 0.02 }),
+  }),
 });
 
 // This is a downstream scenario proxy, not part of seismic detection. The
@@ -607,6 +640,43 @@ export function modifiedMercalliFromPga(pgaG) {
   return Math.max(1, Math.min(10, intensity));
 }
 
+export function liquefactionProbability(
+  pgaG,
+  magnitude,
+  susceptibility,
+  groundwaterDepthFeet = HAZUS_LIQUEFACTION_MODEL.defaultGroundwaterDepthFeet,
+) {
+  if (![pgaG, magnitude, groundwaterDepthFeet].every(Number.isFinite)) {
+    throw new TypeError("Liquefaction inputs must be numbers.");
+  }
+  if (pgaG < 0) throw new RangeError("PGA cannot be negative.");
+  if (magnitude < 0) throw new RangeError("Magnitude cannot be negative.");
+  if (groundwaterDepthFeet < 0) {
+    throw new RangeError("Groundwater depth cannot be negative.");
+  }
+  const parameters = HAZUS_LIQUEFACTION_MODEL.susceptibility[susceptibility];
+  if (!parameters) return 0;
+  const conditional = Math.max(
+    0,
+    Math.min(1, parameters.slope * pgaG + parameters.intercept),
+  );
+  const magnitudeCorrection =
+    0.0027 * magnitude ** 3 -
+    0.0267 * magnitude ** 2 -
+    0.2055 * magnitude +
+    2.9188;
+  const groundwaterCorrection = 0.022 * groundwaterDepthFeet + 0.93;
+  if (magnitudeCorrection <= 0 || groundwaterCorrection <= 0) return 0;
+  return Math.max(
+    0,
+    Math.min(
+      1,
+      (conditional * parameters.mapUnitFraction) /
+        (magnitudeCorrection * groundwaterCorrection),
+    ),
+  );
+}
+
 export function shakeMapGroundMotion(shakeMap, latitude, longitude) {
   if (!shakeMap) return null;
   if (![latitude, longitude].every(Number.isFinite)) {
@@ -644,6 +714,7 @@ export function shakeMapGroundMotion(shakeMap, latitude, longitude) {
   return {
     intensity: interpolate(shakeMap.mmi),
     pgaG: interpolate(shakeMap.pgaPercentG) / 100,
+    pgvCms: shakeMap.pgvCms ? interpolate(shakeMap.pgvCms) : null,
   };
 }
 
@@ -800,7 +871,8 @@ function validateInput(input) {
       input.shakeMap.longitudeStep <= 0 ||
       input.shakeMap.latitudeStep <= 0 ||
       input.shakeMap.mmi?.length !== expectedValues ||
-      input.shakeMap.pgaPercentG?.length !== expectedValues
+      input.shakeMap.pgaPercentG?.length !== expectedValues ||
+      (input.shakeMap.pgvCms && input.shakeMap.pgvCms.length !== expectedValues)
     ) {
       throw new TypeError("ShakeMap field dimensions are invalid.");
     }

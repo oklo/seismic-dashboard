@@ -7,6 +7,7 @@ import {
   CAJON_GATE_RUPTURE,
   CASCADIA_1700_RUPTURE,
   FEED_PROFILES,
+  HAZUS_LIQUEFACTION_MODEL,
   PRESETS,
   PACIFIC_NORTHWEST_STATIONS,
   REGIONS,
@@ -18,6 +19,7 @@ import {
   estimateExposurePeakAccelerationG,
   eventDisplayStatus,
   haversineKm,
+  liquefactionProbability,
   modifiedMercalliFromPga,
   modelEarthquake,
   modelEsNearMonthImpact,
@@ -49,6 +51,66 @@ test("historical presets carry the reviewed or reconstructed geophysical details
     [6.9, 17.2, 7.9, 11.7, 6.8],
   );
   assert.match(PRESETS["hayward-1868"].provenance, /prox/);
+});
+
+test("supported Bay presets carry checked-in USGS ShakeMap fields", () => {
+  const bayMap = CALIFORNIA_MAP_DATA.bay;
+  const supported = [
+    "san-francisco-1906",
+    "loma-prieta-1989",
+    "south-napa",
+    "haywired-m7.05",
+  ];
+
+  assert.deepEqual(Object.keys(bayMap.shakeMaps), supported);
+  supported.forEach((presetId) => {
+    const shakeMap = bayMap.shakeMaps[presetId];
+    assert.equal(PRESETS[presetId].shakeMapKey, presetId);
+    assert.match(shakeMap.source, /USGS/);
+    assert.equal(shakeMap.mmi.length, shakeMap.columnCount * shakeMap.rowCount);
+    assert.equal(shakeMap.pgaPercentG.length, shakeMap.mmi.length);
+    assert.equal(shakeMap.pgvCms.length, shakeMap.mmi.length);
+  });
+  assert.equal(PRESETS["hayward-1868"].shakeMapKey, undefined);
+  assert.equal(PRESETS["san-francisco"].shakeMapKey, undefined);
+
+  const input = {
+    ...PRESETS["san-francisco-1906"],
+    shakeMap: bayMap.shakeMaps["san-francisco-1906"],
+  };
+  const result = modelEarthquake(input, "dart", "bay");
+  const bks = result.stationResults.find((station) => station.code === "BKS");
+  const mappedBks = shakeMapGroundMotion(
+    input.shakeMap,
+    bks.latitude,
+    bks.longitude,
+  );
+  assert.ok(mappedBks.intensity >= 7);
+  assert.ok(mappedBks.pgvCms > 0);
+  assert.ok(Math.abs(bks.peakAccelerationG - mappedBks.pgaG) < 1e-12);
+});
+
+test("Bay liquefaction uses detailed susceptibility and FEMA Hazus probability", () => {
+  const grid = CALIFORNIA_MAP_DATA.bay.liquefaction;
+  const mappedClasses = new Set(grid.values);
+  const veryHighAt20PercentG = liquefactionProbability(0.2, 7.5, "VH", 5);
+  const moderateAt20PercentG = liquefactionProbability(0.2, 7.5, "M", 5);
+  const veryHighAt30PercentG = liquefactionProbability(0.3, 7.5, "VH", 5);
+  const veryHighM6 = liquefactionProbability(0.3, 6.0, "VH", 5);
+  const veryHighM79 = liquefactionProbability(0.3, 7.9, "VH", 5);
+
+  assert.match(grid.source, /USGS Bay Area liquefaction susceptibility/);
+  assert.match(grid.model, /FEMA Hazus 6\.1/);
+  assert.equal(grid.groundwaterDepthFeet, 5);
+  assert.ok(grid.values.filter(Boolean).length > 5_000);
+  assert.deepEqual(mappedClasses, new Set([0, 1, 2, 3, 4, 5]));
+  assert.equal(HAZUS_LIQUEFACTION_MODEL.version, "FEMA Hazus 6.1");
+  assert.equal(liquefactionProbability(0, 7.5, "VH", 5), 0);
+  assert.ok(veryHighAt20PercentG > moderateAt20PercentG);
+  assert.ok(veryHighAt30PercentG > veryHighAt20PercentG);
+  assert.ok(veryHighM79 > veryHighM6);
+  assert.ok(veryHighAt30PercentG < 0.3);
+  assert.throws(() => liquefactionProbability(-0.1, 7, "VH", 5), /negative/);
 });
 
 test("Cajon gate view uses current professional CI accelerometer sites", () => {

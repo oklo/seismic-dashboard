@@ -69,6 +69,9 @@
                     <rect class="map-grid" width="840" height="680" fill="url(#grid)"></rect>
                     <g id="bay-geography"></g>
                     <g id="impact-grid" aria-label="Modeled Modified Mercalli intensity field"></g>
+                    <g id="liquefaction-layer"
+                      aria-label="Modeled earthquake-triggered liquefaction probability"
+                      hidden></g>
                     <g id="population-layer" aria-label="2020 Census population dot density"></g>
                     <g id="population-impact-layer" aria-hidden="true"></g>
                     <g id="fault-layer" aria-label="USGS Quaternary fault traces"></g>
@@ -101,6 +104,17 @@
                     <span>MMI</span><i data-mmi="2">II</i><i data-mmi="4">IV</i>
                     <i data-mmi="6">VI</i><i data-mmi="8">VIII</i><i data-mmi="10">X</i>
                   </div>
+                  <div class="liquefaction-legend" id="liquefaction-legend"
+                    aria-label="Modeled liquefaction probability colors" hidden>
+                    <span>LIQ.</span><i data-probability="1">1%</i><i data-probability="5">5%</i>
+                    <i data-probability="10">10%</i><i data-probability="20">20%+</i>
+                  </div>
+                  <div class="hazard-layer-controls">
+                    <span id="ground-motion-source">USGS SHAKEMAP</span>
+                    <button id="liquefaction-toggle" type="button" aria-pressed="false">
+                      Liquefaction off
+                    </button>
+                  </div>
                   <div class="wave-readout" aria-label="Current modeled wavefront radii">
                     <span><i class="p-key"></i>P <b id="p-radius">0 km</b></span>
                     <span><i class="s-key"></i>S <b id="s-radius">0 km</b></span>
@@ -127,12 +141,17 @@
                 <div class="metric">
                   <span>Peak MMI</span>
                   <strong id="metric-peak-mmi">—</strong>
-                  <small>point-source proxy</small>
+                  <small>spatial ground motion</small>
                 </div>
                 <div class="metric">
                   <span>Population ≥ VI</span>
                   <strong id="metric-population-exposed">—</strong>
                   <small>reached residents</small>
+                </div>
+                <div class="metric liquefaction-metric">
+                  <span>Liquefaction ≥ 5%</span>
+                  <strong id="metric-liquefaction-exposed">—</strong>
+                  <small>modeled residents</small>
                 </div>
                 <div class="metric impact-metric">
                   <span>Impact index</span>
@@ -179,6 +198,7 @@
                       <option value="san-francisco-1906" selected>1906 San Francisco · Mw 7.9</option>
                       <option value="hayward-1868">1868 Hayward · Mw 6.8 estimate</option>
                       <option value="south-napa">2014 South Napa · Mw 6.0</option>
+                      <option value="haywired-m7.05">HayWired scenario · M 7.05</option>
                       <option value="san-francisco">San Francisco scenario · M 7.0</option>
                       <option value="hayward">Hayward scenario · M 6.8</option>
                       <option value="san-jose">San Jose scenario · M 6.5</option>

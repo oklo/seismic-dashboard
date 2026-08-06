@@ -19,6 +19,14 @@ map, and press **Run simulation**. The dashboard includes:
 - Historical Bay Area presets, a Southern California M7.8 finite-rupture
   scenario, and a 1700-style M9 Cascadia scenario with a 1,009 km bilateral
   timing proxy and the official USGS median M9 ensemble ShakeMap.
+- Event-specific Bay ground motion for the 1906 San Francisco, 1989 Loma Prieta,
+  and 2014 South Napa earthquakes from preferred USGS ShakeMap Atlas fields,
+  plus the USGS HayWired M7.05 planning-scenario ShakeMap. Unsupported Bay and
+  custom events are visibly labeled as attenuation fallbacks.
+- A toggleable Bay liquefaction layer combining detailed USGS five-class
+  susceptibility mapping with local PGA and magnitude through the FEMA Hazus
+  6.1 conditional-probability equations. Liquefaction exposure remains separate
+  from the shaking impact index and ES estimate.
 - Landscape Bay Area, Southern California, and Pacific Northwest maps with 2020
   Census population cells that light by local MMI as strong motion reaches them,
   named USGS Quaternary fault traces, and a regional locator inset.
@@ -46,7 +54,9 @@ research/shadow prototype, not a public-safety product or a validated market-
 impact model.
 
 The faint P/S rings are homogeneous travel-time guides, not shaking contours.
-Bay presets use a low-latency point-source attenuation proxy. The Cajon view uses
+Supported Bay presets use checked-in USGS ShakeMap MMI, PGA, and PGV fields. The
+1868 Hayward reconstruction, generic city scenarios, and custom placement use a
+visibly labeled low-latency point-source attenuation fallback. The Cajon view uses
 distance to a progressively activated 261 km rupture polyline with an assumed
 2.8 km/s rupture velocity. It still omits true slip distribution, directivity
 amplitudes, 3-D velocity-structure focusing, basin response, Vs30, and topographic
@@ -104,10 +114,42 @@ The checked-in map module is generated at build time from:
   megathrust and selected Pacific Northwest crustal faults.
 - The USGS [median M9 Cascadia ensemble ShakeMap](https://earthquake.usgs.gov/scenarios/catalog/cszm9/),
   downsampled at build time while preserving its MMI and PGA values.
+- USGS ShakeMap Atlas grids for [1906 San Francisco](https://earthquake.usgs.gov/earthquakes/eventpage/official19060418131226300_12/shakemap),
+  [1989 Loma Prieta](https://earthquake.usgs.gov/earthquakes/eventpage/nc216859/shakemap),
+  and [2014 South Napa](https://earthquake.usgs.gov/earthquakes/eventpage/nc72282711/shakemap),
+  plus the [HayWired scenario ShakeMap](https://www.usgs.gov/media/images/haywired-scenario-shakemap).
+- The USGS [nine-county liquefaction susceptibility database](https://pubs.usgs.gov/of/2000/of00-444/),
+  its [detailed 2006 central-Bay update](https://pubs.usgs.gov/of/2006/1037/),
+  and the [FEMA Hazus 6.1 Earthquake Model](https://www.fema.gov/sites/default/files/documents/fema_hazus-earthquake-model-technical-manual-6-1.pdf).
 
 The 1989 and 1906 presets use USGS reviewed origins. The 1868 Hayward magnitude
 is an historical estimate; its map location and depth are explicit scenario
 proxies because the earthquake predates instrumental recording.
+
+### Bay ShakeMap and liquefaction boundary
+
+The 1906, Loma Prieta, and South Napa presets use the preferred USGS ShakeMap
+Atlas grid associated with each event. These are final spatial reconstructions,
+not direct observations at every map cell. The HayWired preset is a planning
+scenario, not a forecast or the historical 1868 rupture. The dashboard never
+silently stretches one of these fields to a different magnitude, origin, or
+custom map placement; unsupported inputs retain the attenuation fallback and say
+so in both the map strip and terminal.
+
+The toggleable liquefaction overlay combines each event's local ShakeMap PGA with
+the mapped `Very Low` through `Very High` susceptibility class and magnitude
+correction in FEMA Hazus 6.1. It assumes a uniform five-foot groundwater depth
+because the checked-in regional source does not supply a scenario-specific water
+table. The resulting percentage is Hazus's estimated areal fraction of a map unit
+that liquefies—not a site-specific failure probability, observed ground failure,
+or probability that every resident or structure in the cell is damaged.
+
+The `Liquefaction ≥ 5%` metric counts Census residents whose population-cell
+point falls in a modeled cell at or above that threshold. It does not model
+lateral spreading, settlement, deformation, building or pipeline fragility,
+losses, casualties, or groundwater uncertainty. Liquefaction exposure is shown
+as a separate hazard and does not alter detector confidence, shaking impact
+index, or ES estimate.
 
 ### Cajon gate evidence boundary
 

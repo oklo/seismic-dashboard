@@ -7,6 +7,7 @@ import {
   describeLocation,
   estimateMercalliAtLocation,
   eventDisplayStatus,
+  liquefactionProbability,
   modelEsNearMonthImpact,
   modelEarthquake,
   modelPopulationImpact,
@@ -68,6 +69,10 @@ const elements = {
   networkMap: document.querySelector("#network-map"),
   bayGeography: document.querySelector("#bay-geography"),
   impactGrid: document.querySelector("#impact-grid"),
+  liquefactionLayer: document.querySelector("#liquefaction-layer"),
+  liquefactionLegend: document.querySelector("#liquefaction-legend"),
+  liquefactionToggle: document.querySelector("#liquefaction-toggle"),
+  groundMotionSource: document.querySelector("#ground-motion-source"),
   populationLayer: document.querySelector("#population-layer"),
   populationImpactLayer: document.querySelector("#population-impact-layer"),
   faultLayer: document.querySelector("#fault-layer"),
@@ -89,6 +94,7 @@ const elements = {
   metricMajor: document.querySelector("#metric-major"),
   metricPeakMmi: document.querySelector("#metric-peak-mmi"),
   metricPopulationExposed: document.querySelector("#metric-population-exposed"),
+  metricLiquefactionExposed: document.querySelector("#metric-liquefaction-exposed"),
   metricImpactIndex: document.querySelector("#metric-impact-index"),
   metricEsChange: document.querySelector("#metric-es-change"),
   terminal: document.querySelector("#terminal-screen"),
@@ -106,13 +112,16 @@ let animationFrame = null;
 let eventTimer = null;
 let nextRunId = 0;
 let impactCells = [];
+let liquefactionCells = [];
 let populationArrivalLayers = [];
 let populationImpactTimeline = [];
 let populationImpactSummary = null;
 let revealedImpactCellCount = 0;
+let revealedLiquefactionCellCount = 0;
 let revealedPopulationLayerCount = 0;
 let revealedPopulationCellCount = 0;
 let reachedPopulationMmi6Plus = 0;
+let reachedLiquefactionPopulation = 0;
 let reachedImpactMass = 0;
 let draggingEpicenter = false;
 let pendingPlacement = null;
@@ -125,6 +134,7 @@ let liveLastHealthKey = null;
 let liveLastHealthLogAt = 0;
 let liveLastEventId = null;
 let activeRegionName = "bay";
+let liquefactionOverlayEnabled = false;
 
 function currentRegion() {
   return REGIONS[activeRegionName];
@@ -148,6 +158,35 @@ function applyPreset(presetId) {
   elements.depth.value = preset.depthKm.toFixed(1);
   elements.latitude.value = preset.latitude.toFixed(3);
   elements.longitude.value = preset.longitude.toFixed(3);
+}
+
+function setLiquefactionOverlay(enabled) {
+  liquefactionOverlayEnabled = Boolean(
+    enabled && currentMap().liquefaction && activeDashboardMode === "scenario",
+  );
+  elements.liquefactionToggle.setAttribute(
+    "aria-pressed",
+    String(liquefactionOverlayEnabled),
+  );
+  elements.liquefactionToggle.textContent = liquefactionOverlayEnabled
+    ? "Liquefaction on"
+    : "Liquefaction off";
+  elements.liquefactionLayer.toggleAttribute("hidden", !liquefactionOverlayEnabled);
+  elements.liquefactionLegend.hidden = !liquefactionOverlayEnabled;
+  if (liquefactionOverlayEnabled && !simulation) {
+    liquefactionCells.forEach((cell) => {
+      cell.rect.style.opacity = cell.opacity ?? "0";
+    });
+  }
+}
+
+function syncHazardControls() {
+  const available = Boolean(
+    currentMap().liquefaction && activeDashboardMode === "scenario",
+  );
+  elements.liquefactionToggle.disabled = !available;
+  elements.liquefactionToggle.hidden = !currentMap().liquefaction;
+  if (!available) setLiquefactionOverlay(false);
 }
 
 function configureRegion(regionName) {
@@ -177,9 +216,10 @@ function configureRegion(regionName) {
       "U.S. Census population dots, USGS faults and median M9 ensemble ShakeMap, a bilateral full-margin Cascadia rupture proxy, eight UW/UO accelerometer sites, and modeled P and S timing guides.";
   } else {
     elements.mapDescription.textContent =
-      "Census population dots, USGS Quaternary fault traces, modeled Mercalli intensity, eight BK stations, and P and S wavefronts.";
+      "Census population dots, event-specific USGS ShakeMap ground motion where available, Bay liquefaction susceptibility and modeled probability, Quaternary fault traces, eight BK stations, and P and S wavefronts.";
   }
   drawStaticMaps();
+  syncHazardControls();
 }
 
 function svgElement(name, attributes = {}) {
@@ -333,10 +373,44 @@ function drawImpactGrid() {
   }
 }
 
+function drawLiquefactionGrid() {
+  liquefactionCells = [];
+  elements.liquefactionLayer.replaceChildren();
+  const map = currentMap();
+  const grid = map.liquefaction;
+  if (!grid) return;
+  grid.values.forEach((classIndex, index) => {
+    if (!classIndex) return;
+    const column = index % grid.columnCount;
+    const row = Math.floor(index / grid.columnCount);
+    const x = grid.xOffset + column * grid.cellSizePx;
+    const y = grid.yOffset + row * grid.cellSizePx;
+    const location = unprojectPoint(
+      map,
+      x + grid.cellSizePx / 2,
+      y + grid.cellSizePx / 2,
+    );
+    const rect = svgElement("rect", {
+      class: "liquefaction-cell",
+      x,
+      y,
+      width: grid.cellSizePx + 0.3,
+      height: grid.cellSizePx + 0.3,
+    });
+    elements.liquefactionLayer.append(rect);
+    liquefactionCells.push({
+      ...location,
+      susceptibility: grid.classes[classIndex],
+      rect,
+    });
+  });
+}
+
 function drawStaticMaps() {
   elements.ruptureLayer.replaceChildren();
   drawGeography(elements.bayGeography, currentMap(), currentRegion().eventPrefix);
   drawImpactGrid();
+  drawLiquefactionGrid();
   drawPopulation();
   drawFaults();
   drawCaliforniaInset();
@@ -395,8 +469,13 @@ function readInput() {
   if (preset?.rupture && preset.region === activeRegionName) {
     input.rupture = preset.rupture;
     input.shakingDurationS = preset.shakingDurationS;
-    if (currentMap().shakeMap) input.shakeMap = currentMap().shakeMap;
   }
+  const shakeMap = preset?.shakeMapKey
+    ? currentMap().shakeMaps?.[preset.shakeMapKey] ??
+      (preset.shakeMapKey === "cascadia-1700" ? currentMap().shakeMap : null)
+    : null;
+  if (shakeMap) input.shakeMap = shakeMap;
+  input.groundMotionSource = shakeMap ? "usgs-shakemap" : "attenuation-fallback";
   return input;
 }
 
@@ -428,6 +507,34 @@ function mmiColor(intensity) {
   return `rgb(${color.join(" ")})`;
 }
 
+function liquefactionColor(probability) {
+  if (probability >= 0.2) return "rgb(141 38 55)";
+  if (probability >= 0.1) return "rgb(217 104 59)";
+  if (probability >= 0.05) return "rgb(239 173 72)";
+  return "rgb(243 223 125)";
+}
+
+function liquefactionOpacity(probability) {
+  if (probability <= 0) return "0";
+  return String(Math.min(0.78, 0.16 + probability * 2.6));
+}
+
+function liquefactionSusceptibilityAtPixel(map, x, y) {
+  const grid = map.liquefaction;
+  if (!grid) return null;
+  const column = Math.floor((x - grid.xOffset) / grid.cellSizePx);
+  const row = Math.floor((y - grid.yOffset) / grid.cellSizePx);
+  if (
+    column < 0 ||
+    row < 0 ||
+    column >= grid.columnCount ||
+    row >= grid.rowCount
+  ) {
+    return null;
+  }
+  return grid.classes[grid.values[row * grid.columnCount + column]] ?? null;
+}
+
 function romanMmi(intensity) {
   const numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
   return numerals[Math.max(0, Math.min(9, Math.round(intensity) - 1))];
@@ -445,6 +552,17 @@ function formatExpectedChangePercent(value) {
   return `${value < 0 ? "−" : "+"}${Math.abs(value).toFixed(2)}%`;
 }
 
+function updateGroundMotionSource(input) {
+  const usesShakeMap = Boolean(input.shakeMap);
+  elements.groundMotionSource.textContent = usesShakeMap
+    ? "USGS SHAKEMAP"
+    : "ATTENUATION FALLBACK";
+  elements.groundMotionSource.classList.toggle("fallback", !usesShakeMap);
+  elements.groundMotionSource.title = usesShakeMap
+    ? input.shakeMap.source
+    : "No event-specific ShakeMap is assigned to this preset.";
+}
+
 function describeScenarioLocation(input, latitude, longitude) {
   if (input.region === "pacificNorthwest" && input.rupture) {
     return "Pacific Northwest, Cascadia coast";
@@ -459,15 +577,21 @@ function resetPropagationReveal() {
   impactCells.forEach((cell) => {
     cell.rect.style.opacity = "0";
   });
+  liquefactionCells.forEach((cell) => {
+    cell.rect.style.opacity = "0";
+  });
   populationArrivalLayers.forEach((layer) => {
     layer.path.style.opacity = "0";
   });
   revealedImpactCellCount = 0;
+  revealedLiquefactionCellCount = 0;
   revealedPopulationLayerCount = 0;
   revealedPopulationCellCount = 0;
   reachedPopulationMmi6Plus = 0;
+  reachedLiquefactionPopulation = 0;
   reachedImpactMass = 0;
   elements.metricPopulationExposed.textContent = "0";
+  elements.metricLiquefactionExposed.textContent = "0";
   elements.metricImpactIndex.textContent = "0.0";
   elements.metricEsChange.textContent = "0.00%";
 }
@@ -496,6 +620,14 @@ function updatePropagationReveal(elapsedS) {
     revealedImpactCellCount += 1;
   }
   while (
+    revealedLiquefactionCellCount < liquefactionCells.length &&
+    liquefactionCells[revealedLiquefactionCellCount].arrivalS <= elapsedS
+  ) {
+    const cell = liquefactionCells[revealedLiquefactionCellCount];
+    cell.rect.style.opacity = cell.opacity;
+    revealedLiquefactionCellCount += 1;
+  }
+  while (
     revealedPopulationLayerCount < populationArrivalLayers.length &&
     populationArrivalLayers[revealedPopulationLayerCount].arrivalS <= elapsedS
   ) {
@@ -509,6 +641,9 @@ function updatePropagationReveal(elapsedS) {
   ) {
     const cell = populationImpactTimeline[revealedPopulationCellCount];
     if (cell.intensity >= 6) reachedPopulationMmi6Plus += cell.population;
+    if (cell.liquefactionProbability >= 0.05) {
+      reachedLiquefactionPopulation += cell.population;
+    }
     reachedImpactMass += Math.max(0, cell.intensity - 3) ** 2 * cell.population;
     revealedPopulationCellCount += 1;
   }
@@ -516,6 +651,9 @@ function updatePropagationReveal(elapsedS) {
     const impact = currentPopulationImpact();
     elements.metricPopulationExposed.textContent = formatPopulation(
       impact.populationMmi6Plus,
+    );
+    elements.metricLiquefactionExposed.textContent = formatPopulation(
+      reachedLiquefactionPopulation,
     );
     elements.metricImpactIndex.textContent = impact.impactIndex.toFixed(1);
     elements.metricEsChange.textContent = formatExpectedChangePercent(
@@ -537,20 +675,59 @@ function updateImpact(input) {
   });
   impactCells.sort((a, b) => a.arrivalS - b.arrivalS);
 
+  let maximumLiquefactionProbability = 0;
+  const groundwaterDepthFeet = currentMap().liquefaction?.groundwaterDepthFeet ?? 5;
+  liquefactionCells.forEach((cell) => {
+    const { pgaG, strongMotionAfterOriginS } = estimateMercalliAtLocation(
+      input,
+      cell.latitude,
+      cell.longitude,
+    );
+    const probability = liquefactionProbability(
+      pgaG,
+      input.magnitude,
+      cell.susceptibility,
+      groundwaterDepthFeet,
+    );
+    cell.probability = probability;
+    cell.arrivalS = strongMotionAfterOriginS;
+    cell.opacity = liquefactionOpacity(probability);
+    cell.rect.style.fill = liquefactionColor(probability);
+    maximumLiquefactionProbability = Math.max(
+      maximumLiquefactionProbability,
+      probability,
+    );
+  });
+  liquefactionCells.sort((a, b) => a.arrivalS - b.arrivalS);
+
   const arrivalGroups = new Map();
   populationImpactTimeline = [];
   const map = currentMap();
+  let liquefactionPopulation5Percent = 0;
   map.populationCells.forEach(([x, y, population]) => {
     const location = unprojectPoint(map, x, y);
-    const { intensity, strongMotionAfterOriginS } = estimateMercalliAtLocation(
+    const { intensity, pgaG, strongMotionAfterOriginS } = estimateMercalliAtLocation(
       input,
       location.latitude,
       location.longitude,
     );
     const arrivalS = strongMotionAfterOriginS;
+    const susceptibility = liquefactionSusceptibilityAtPixel(map, x, y);
+    const probability = susceptibility
+      ? liquefactionProbability(
+          pgaG,
+          input.magnitude,
+          susceptibility,
+          groundwaterDepthFeet,
+        )
+      : 0;
+    if (probability >= 0.05) {
+      liquefactionPopulation5Percent += Math.max(0, Number(population));
+    }
     populationImpactTimeline.push({
       arrivalS,
       intensity,
+      liquefactionProbability: probability,
       population: Math.max(0, Number(population)),
     });
     if (intensity < 2) return;
@@ -584,6 +761,8 @@ function updateImpact(input) {
     map.populationCells,
     map.projection,
   );
+  impact.maximumLiquefactionProbability = maximumLiquefactionProbability;
+  impact.liquefactionPopulation5Percent = liquefactionPopulation5Percent;
   populationImpactSummary = impact;
   resetPropagationReveal();
   elements.metricPeakMmi.textContent = `${romanMmi(impact.maximumMmi)} / ${impact.maximumMmi.toFixed(1)}`;
@@ -653,6 +832,7 @@ function setLiveMetricsEmpty() {
   elements.metricMajor.textContent = "—";
   elements.metricPeakMmi.textContent = "—";
   elements.metricPopulationExposed.textContent = "—";
+  elements.metricLiquefactionExposed.textContent = "—";
   elements.metricImpactIndex.textContent = "—";
   elements.metricEsChange.textContent = "—";
 }
@@ -856,6 +1036,9 @@ function enterLiveMode() {
   clearWavefronts();
   resetPropagationReveal();
   setLiveMetricsEmpty();
+  elements.groundMotionSource.textContent = "LIVE WAVEFORMS";
+  elements.groundMotionSource.classList.remove("fallback");
+  syncHazardControls();
   const referenceInput = PRESETS["san-francisco-1906"];
   const referenceResult = modelEarthquake(referenceInput, "dart");
   drawStations(referenceResult, referenceInput);
@@ -876,6 +1059,7 @@ function enterLiveMode() {
 function enterScenarioMode() {
   stopLivePolling();
   activeDashboardMode = "scenario";
+  syncHazardControls();
   elements.dashboardRegion.disabled = false;
   elements.scenarioContext.hidden = activeRegionName === "bay";
   elements.outputModeLabel.textContent = "Simulation output";
@@ -1568,6 +1752,7 @@ function updatePreview() {
   }`;
   try {
     const input = readInput();
+    updateGroundMotionSource(input);
     const result = modelEarthquake(input, elements.profile.value, activeRegionName);
     const watch = result.revisions[0];
     const major = result.revisions.find((revision) => revision.classification === "major_suspected");
@@ -1575,6 +1760,11 @@ function updatePreview() {
     elements.metricMajor.textContent = major ? formatSeconds(major.detectedAfterOriginS) : "—";
     elements.metricNetwork.textContent = `${result.stationResults.filter((station) => station.triggered).length} / ${result.stationResults.length}`;
     updateImpact(input);
+    if (liquefactionOverlayEnabled) {
+      liquefactionCells.forEach((cell) => {
+        cell.rect.style.opacity = cell.opacity;
+      });
+    }
     drawEpicenters(input);
     drawStations(result, input);
     updateStations(result, 0, new Set());
@@ -1599,6 +1789,7 @@ function runSimulation(event) {
   resetTerminal();
 
   const input = readInput();
+  updateGroundMotionSource(input);
   const speed = Number.parseFloat(elements.speed.value);
   const result = modelEarthquake(input, elements.profile.value, activeRegionName);
   const impact = updateImpact(input);
@@ -1651,7 +1842,23 @@ function runSimulation(event) {
   if (input.shakeMap) {
     terminalLine(
       "SHAKEMAP",
-      `${input.shakeMap.source} · median ground-motion field · tsunami not modeled`,
+      `${input.shakeMap.source} · ${input.shakeMap.sourceKind ?? "spatial ground-motion field"}`,
+      "muted",
+      originTime,
+    );
+  } else {
+    terminalLine(
+      "SHAKEMAP",
+      "No event-specific field · using coarse magnitude-distance attenuation fallback",
+      "danger",
+      originTime,
+    );
+  }
+  const liquefaction = currentMap().liquefaction;
+  if (liquefaction) {
+    terminalLine(
+      "LIQUEFACTION",
+      `${liquefaction.model} · ${liquefaction.source} · ${liquefaction.groundwaterDepthFeet} ft groundwater assumed · max ${(impact.maximumLiquefactionProbability * 100).toFixed(0)}% · ${formatPopulation(impact.liquefactionPopulation5Percent)} residents at ≥5% · excluded from impact/ES`,
       "muted",
       originTime,
     );
@@ -1708,6 +1915,9 @@ elements.dashboardRegion.addEventListener("change", () => {
   applyPreset(defaultPresetForRegion(activeRegionName));
   resetTerminal();
   updatePreview();
+});
+elements.liquefactionToggle.addEventListener("click", () => {
+  setLiquefactionOverlay(!liquefactionOverlayEnabled);
 });
 elements.form.addEventListener("submit", runSimulation);
 elements.reset.addEventListener("click", resetSimulation);
@@ -1773,6 +1983,9 @@ updateClock();
 window.setInterval(updateClock, 250);
 resetTerminal();
 updatePreview();
+if (query.get("liquefaction") === "1") {
+  setLiquefactionOverlay(true);
+}
 setPlaybackState("idle");
 if (elements.dashboardMode.value === "live") {
   enterLiveMode();

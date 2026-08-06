@@ -1031,6 +1031,12 @@ main {
 .network-map-stage .state-shape { fill: #edf0eb; stroke: #8f9991; }
 .network-map-stage .county-shape { fill: none; stroke: #c2c9c3; opacity: 0.86; }
 .impact-cell { opacity: 0; transition: none; }
+.liquefaction-cell {
+  stroke: none;
+  opacity: 0;
+  mix-blend-mode: multiply;
+  transition: opacity 90ms linear;
+}
 .population-dots.low { stroke: #969d97; stroke-width: 0.6; opacity: 0.22; }
 .population-dots.medium { stroke: #747c76; stroke-width: 0.75; opacity: 0.3; }
 .population-dots.high { stroke: #4f5851; stroke-width: 0.95; opacity: 0.4; filter: none; }
@@ -1134,6 +1140,47 @@ main {
 }
 .mmi-legend span { padding: 4px 6px 4px 0; }
 .mmi-legend i { min-width: 21px; padding: 4px 3px; }
+.liquefaction-legend {
+  display: flex;
+  align-items: center;
+  color: #737c75;
+  font: 6.5px var(--mono);
+}
+.liquefaction-legend span { padding-right: 5px; }
+.liquefaction-legend i {
+  min-width: 27px;
+  padding: 4px 3px;
+  color: #302d20;
+  font-style: normal;
+  text-align: center;
+}
+.liquefaction-legend i[data-probability="1"] { background: #f3df7d; }
+.liquefaction-legend i[data-probability="5"] { background: #efad48; }
+.liquefaction-legend i[data-probability="10"] { color: #fff; background: #d9683b; }
+.liquefaction-legend i[data-probability="20"] { color: #fff; background: #8d2637; }
+.hazard-layer-controls { display: flex; align-items: center; gap: 6px; }
+.hazard-layer-controls > span {
+  color: #667069;
+  font: 650 6.5px var(--mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.hazard-layer-controls > span.fallback { color: #a66c25; }
+.hazard-layer-controls button {
+  padding: 4px 6px;
+  color: #59635c;
+  background: #f7f8f5;
+  border: 1px solid #c9cfc9;
+  border-radius: 3px;
+  font: 650 6.5px var(--mono);
+  white-space: nowrap;
+}
+.hazard-layer-controls button[aria-pressed="true"] {
+  color: #8d2637;
+  background: #fff7e8;
+  border-color: #d29b55;
+}
+.hazard-layer-controls button:disabled { opacity: 0.45; cursor: default; }
 .wave-readout,
 .network-map-stage .wave-readout {
   position: static;
@@ -1184,12 +1231,13 @@ main {
 .station-card.phase-shaking .trace-signal,
 .station-card.phase-recorded .trace-signal { stroke: var(--station-mmi-color, #59645c); }
 
-.metric-strip { margin-top: auto; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.metric-strip { margin-top: auto; grid-template-columns: repeat(8, minmax(0, 1fr)); }
 .metric { padding: 9px 8px; }
 .metric > span { font-size: 7px; }
 .metric strong { font-size: clamp(15px, 1.45vw, 21px); }
 .metric small { font-size: 6.5px; }
 .es-metric strong { color: #a53e37; }
+.liquefaction-metric strong { color: #9a4c2d; }
 
 @media (max-width: 1120px) {
   .simulator-grid {

@@ -30,9 +30,23 @@ FAULT_URL = (
     "https://services2.arcgis.com/OCysFFatYM3MITwS/arcgis/rest/services/"
     "Quaternary_Faults/FeatureServer/0/query"
 )
+LIQUEFACTION_URL = (
+    "https://services3.arcgis.com/i2dkYWmb4wHvYPda/arcgis/rest/services/"
+    "usgs_liquefaction_susceptibility/FeatureServer/0/query"
+)
+LIQUEFACTION_SOURCE_URL = (
+    "https://www.usgs.gov/programs/earthquake-hazards/science/"
+    "san-francisco-bay-area-liquefaction-hazard-maps"
+)
+LIQUEFACTION_DETAIL_SOURCE_URL = "https://pubs.usgs.gov/of/2006/1037/"
+HAZUS_LIQUEFACTION_SOURCE_URL = (
+    "https://www.fema.gov/sites/default/files/documents/"
+    "fema_hazus-earthquake-model-technical-manual-6-1.pdf"
+)
 SOURCE_LABEL = (
     "U.S. Census Bureau TIGERweb 2020 population and 2024 generalized boundaries; "
-    "USGS Quaternary Fault and Fold Database"
+    "USGS Quaternary Fault and Fold Database, ShakeMap, and Bay liquefaction "
+    "susceptibility; FEMA Hazus 6.1 liquefaction model"
 )
 CALIFORNIA_BOUNDS = (-124.65, 32.3, -114.0, 42.1)
 WEST_COAST_BOUNDS = (-125.1, 32.3, -116.5, 49.3)
@@ -45,6 +59,52 @@ USGS_CASCADIA_MEDIAN_GRID_URL = (
     "https://earthquake.usgs.gov/product/shakemap-scenario/"
     "_median_se/us/1605643892799/download/grid.xml"
 )
+BAY_SHAKEMAPS = {
+    "san-francisco-1906": {
+        "url": (
+            "https://earthquake.usgs.gov/product/shakemap/"
+            "official19060418131226300_12/atlas/1599699865237/download/grid.xml"
+        ),
+        "source": "USGS ShakeMap Atlas reconstruction · 1906 San Francisco M7.9",
+        "source_url": (
+            "https://earthquake.usgs.gov/earthquakes/eventpage/"
+            "official19060418131226300_12/shakemap"
+        ),
+        "source_kind": "historical reconstruction",
+        "downsample": 1,
+    },
+    "loma-prieta-1989": {
+        "url": (
+            "https://earthquake.usgs.gov/product/shakemap/"
+            "nc216859/atlas/1594161215615/download/grid.xml"
+        ),
+        "source": "USGS preferred ShakeMap Atlas reconstruction · 1989 Loma Prieta M6.9",
+        "source_url": "https://earthquake.usgs.gov/earthquakes/eventpage/nc216859/shakemap",
+        "source_kind": "historical reconstruction",
+        "downsample": 1,
+    },
+    "south-napa": {
+        "url": (
+            "https://earthquake.usgs.gov/product/shakemap/"
+            "nc72282711/atlas/1624995941193/download/grid.xml"
+        ),
+        "source": "USGS preferred ShakeMap Atlas reconstruction · 2014 South Napa M6.0",
+        "source_url": "https://earthquake.usgs.gov/earthquakes/eventpage/nc72282711/shakemap",
+        "source_kind": "reviewed historical event",
+        "downsample": 1,
+    },
+    "haywired-m7.05": {
+        "url": (
+            "https://earthquake.usgs.gov/product/shakemap-scenario/"
+            "ushaywiredm7.05_se/us/1484100039013/download/grid.xml"
+        ),
+        "source": "USGS HayWired M7.05 scenario ShakeMap",
+        "source_url": "https://www.usgs.gov/media/images/haywired-scenario-shakemap",
+        "source_kind": "planning scenario",
+        "downsample": 1,
+    },
+}
+LIQUEFACTION_CLASSES = {"VL": 1, "L": 2, "M": 3, "H": 4, "VH": 5}
 BAY_FAULT_NAMES = (
     "San Andreas fault zone",
     "San Gregorio fault zone",
@@ -363,20 +423,43 @@ def _fault_data(
     ]
 
 
-def _cascadia_shakemap(
-    bounds: tuple[float, float, float, float], downsample: int = 5
+def _xml_child(root: ET.Element, name: str) -> ET.Element | None:
+    return next(
+        (child for child in root if child.tag.rsplit("}", 1)[-1] == name),
+        None,
+    )
+
+
+def _shakemap_grid(
+    url: str,
+    bounds: tuple[float, float, float, float],
+    *,
+    source: str,
+    source_url: str,
+    source_kind: str,
+    downsample: int = 1,
 ) -> dict[str, Any]:
     request = urllib.request.Request(
-        USGS_CASCADIA_MEDIAN_GRID_URL,
+        url,
         headers={"User-Agent": "economic-seismology-map-builder/1.0"},
     )
     with urllib.request.urlopen(request, timeout=120) as response:
         root = ET.fromstring(response.read())
-    namespace = "{http://earthquake.usgs.gov/eqcenter/shakemap}"
-    specification = root.find(f"{namespace}grid_specification")
-    grid_data = root.find(f"{namespace}grid_data")
+    specification = _xml_child(root, "grid_specification")
+    grid_data = _xml_child(root, "grid_data")
     if specification is None or grid_data is None or not grid_data.text:
-        raise RuntimeError("USGS Cascadia ShakeMap grid is incomplete")
+        raise RuntimeError(f"USGS ShakeMap grid is incomplete: {url}")
+
+    fields = {
+        child.attrib["name"].upper(): int(child.attrib["index"]) - 1
+        for child in root
+        if child.tag.rsplit("}", 1)[-1] == "grid_field"
+    }
+    required_fields = {"LON", "LAT", "MMI", "PGA"}
+    if not required_fields.issubset(fields):
+        raise RuntimeError(
+            f"USGS ShakeMap grid lacks fields {sorted(required_fields - fields)}: {url}"
+        )
 
     column_count = int(specification.attrib["nlon"])
     row_count = int(specification.attrib["nlat"])
@@ -387,17 +470,17 @@ def _cascadia_shakemap(
     valid_columns = [
         column
         for column in range(column_count)
-        if bounds[0] <= float(rows[column][0]) <= bounds[2]
+        if bounds[0] <= float(rows[column][fields["LON"]]) <= bounds[2]
     ]
     valid_rows = [
         row
         for row in range(row_count)
-        if bounds[1] <= float(rows[row * column_count][1]) <= bounds[3]
+        if bounds[1] <= float(rows[row * column_count][fields["LAT"]]) <= bounds[3]
     ]
     selected_columns = valid_columns[::downsample]
     selected_rows = valid_rows[::downsample]
     if len(selected_columns) < 2 or len(selected_rows) < 2:
-        raise RuntimeError("USGS Cascadia ShakeMap does not cover the map extent")
+        raise RuntimeError(f"USGS ShakeMap does not cover the map extent: {url}")
 
     values = [
         rows[row * column_count + column]
@@ -407,17 +490,120 @@ def _cascadia_shakemap(
     first = values[0]
     second_column = values[1]
     second_row = values[len(selected_columns)]
-    return {
-        "source": "USGS median M9 Cascadia ensemble ShakeMap (Wirth et al. 2021)",
-        "sourceUrl": "https://earthquake.usgs.gov/scenarios/catalog/cszm9/",
-        "longitudeMin": float(first[0]),
-        "latitudeMax": float(first[1]),
-        "longitudeStep": round(float(second_column[0]) - float(first[0]), 4),
-        "latitudeStep": round(float(first[1]) - float(second_row[1]), 4),
+    result = {
+        "source": source,
+        "sourceUrl": source_url,
+        "sourceKind": source_kind,
+        "longitudeMin": float(first[fields["LON"]]),
+        "latitudeMax": float(first[fields["LAT"]]),
+        "longitudeStep": round(
+            float(second_column[fields["LON"]]) - float(first[fields["LON"]]), 6
+        ),
+        "latitudeStep": round(
+            float(first[fields["LAT"]]) - float(second_row[fields["LAT"]]), 6
+        ),
         "columnCount": len(selected_columns),
         "rowCount": len(selected_rows),
-        "mmi": [float(value[2]) for value in values],
-        "pgaPercentG": [float(value[3]) for value in values],
+        "mmi": [float(value[fields["MMI"]]) for value in values],
+        "pgaPercentG": [float(value[fields["PGA"]]) for value in values],
+    }
+    if "PGV" in fields:
+        result["pgvCms"] = [float(value[fields["PGV"]]) for value in values]
+    return result
+
+
+def _polygons(geometry: dict[str, Any]) -> list[list[list[list[float]]]]:
+    if geometry["type"] == "Polygon":
+        return [geometry["coordinates"]]
+    if geometry["type"] == "MultiPolygon":
+        return geometry["coordinates"]
+    raise ValueError(f"unsupported polygon geometry type {geometry['type']}")
+
+
+def _point_in_ring(longitude: float, latitude: float, ring: list[list[float]]) -> bool:
+    inside = False
+    previous = ring[-1]
+    for current in ring:
+        x1, y1 = previous[:2]
+        x2, y2 = current[:2]
+        if (y1 > latitude) != (y2 > latitude):
+            crossing = (x2 - x1) * (latitude - y1) / (y2 - y1) + x1
+            if longitude < crossing:
+                inside = not inside
+        previous = current
+    return inside
+
+
+def _point_in_polygon(
+    longitude: float, latitude: float, polygon: list[list[list[float]]]
+) -> bool:
+    return bool(polygon) and _point_in_ring(longitude, latitude, polygon[0]) and not any(
+        _point_in_ring(longitude, latitude, hole) for hole in polygon[1:]
+    )
+
+
+def _liquefaction_grid(
+    features: list[dict[str, Any]], projection: Projection, cell_size_px: int = 6
+) -> dict[str, Any]:
+    rendered_width = projection.width - 2 * projection.x_offset
+    rendered_height = projection.height - 2 * projection.y_offset
+    column_count = math.ceil(rendered_width / cell_size_px)
+    row_count = math.ceil(rendered_height / cell_size_px)
+    values = [0] * (column_count * row_count)
+
+    for feature in features:
+        category = LIQUEFACTION_CLASSES.get(feature["properties"].get("liq"))
+        geometry = feature.get("geometry")
+        if category is None or geometry is None:
+            continue
+        for polygon in _polygons(geometry):
+            outer = polygon[0]
+            longitudes = [point[0] for point in outer]
+            latitudes = [point[1] for point in outer]
+            minimum_x, maximum_y = projection.point(min(longitudes), min(latitudes))
+            maximum_x, minimum_y = projection.point(max(longitudes), max(latitudes))
+            first_column = max(
+                0, math.floor((minimum_x - projection.x_offset) / cell_size_px)
+            )
+            last_column = min(
+                column_count - 1,
+                math.floor((maximum_x - projection.x_offset) / cell_size_px),
+            )
+            first_row = max(
+                0, math.floor((minimum_y - projection.y_offset) / cell_size_px)
+            )
+            last_row = min(
+                row_count - 1,
+                math.floor((maximum_y - projection.y_offset) / cell_size_px),
+            )
+            for row in range(first_row, last_row + 1):
+                y = projection.y_offset + (row + 0.5) * cell_size_px
+                latitude = projection.latitude_max - (
+                    y - projection.y_offset
+                ) / projection.y_scale
+                for column in range(first_column, last_column + 1):
+                    x = projection.x_offset + (column + 0.5) * cell_size_px
+                    longitude = projection.longitude_min + (
+                        x - projection.x_offset
+                    ) / projection.x_scale
+                    if _point_in_polygon(longitude, latitude, polygon):
+                        values[row * column_count + column] = category
+
+    return {
+        "source": "USGS Bay Area liquefaction susceptibility (Knudsen 2000; Witter et al. 2006)",
+        "sourceUrl": LIQUEFACTION_SOURCE_URL,
+        "detailSourceUrl": LIQUEFACTION_DETAIL_SOURCE_URL,
+        "serviceUrl": LIQUEFACTION_URL.rsplit("/query", 1)[0],
+        "model": "FEMA Hazus 6.1 conditional liquefaction probability",
+        "modelUrl": HAZUS_LIQUEFACTION_SOURCE_URL,
+        "groundwaterDepthFeet": 5,
+        "cellSizePx": cell_size_px,
+        "xOffset": round(projection.x_offset, 6),
+        "yOffset": round(projection.y_offset, 6),
+        "columnCount": column_count,
+        "rowCount": row_count,
+        "classes": [None, "VL", "L", "M", "H", "VH"],
+        "values": values,
     }
 
 
@@ -501,6 +687,28 @@ def build(output: Path) -> None:
     bay = _build_region(
         california_states, california_counties, BAY_BOUNDS, BAY_FAULT_NAMES
     )
+    bay["shakeMaps"] = {
+        preset_id: _shakemap_grid(
+            specification["url"],
+            BAY_BOUNDS,
+            source=specification["source"],
+            source_url=specification["source_url"],
+            source_kind=specification["source_kind"],
+            downsample=specification["downsample"],
+        )
+        for preset_id, specification in BAY_SHAKEMAPS.items()
+    }
+    liquefaction_collection = _query(
+        LIQUEFACTION_URL,
+        "objectid,liq",
+        where="liq IN ('VL','L','M','H','VH')",
+        bounds=BAY_BOUNDS,
+        page_size=2_000,
+    )
+    bay["liquefaction"] = _liquefaction_grid(
+        liquefaction_collection["features"],
+        _projection(BAY_BOUNDS, 840, 680, 16),
+    )
     southern_california = _build_region(
         california_states,
         california_counties,
@@ -516,8 +724,13 @@ def build(output: Path) -> None:
         TRACT_URL,
         "2020 Census tract internal points; U.S. population only",
     )
-    pacific_northwest["shakeMap"] = _cascadia_shakemap(
-        PACIFIC_NORTHWEST_BOUNDS
+    pacific_northwest["shakeMap"] = _shakemap_grid(
+        USGS_CASCADIA_MEDIAN_GRID_URL,
+        PACIFIC_NORTHWEST_BOUNDS,
+        source="USGS median M9 Cascadia ensemble ShakeMap (Wirth et al. 2021)",
+        source_url="https://earthquake.usgs.gov/scenarios/catalog/cszm9/",
+        source_kind="median planning scenario",
+        downsample=5,
     )
     payload = {
         "source": SOURCE_LABEL,
