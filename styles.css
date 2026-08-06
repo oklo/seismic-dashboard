@@ -698,8 +698,8 @@ main {
 }
 .rupture-trace { stroke: #922f2a; stroke-width: 3; stroke-dasharray: 5 4; opacity: 0.5; }
 .rupture-progress { stroke: #e13228; stroke-width: 4.5; filter: url(#glow); }
-.cajon-gate-marker circle { fill: #fff; stroke: #922f2a; stroke-width: 2; }
-.cajon-gate-marker text {
+.rupture-landmark circle { fill: #fff; stroke: #922f2a; stroke-width: 2; }
+.rupture-landmark text {
   fill: #6e2925;
   stroke: #fff;
   stroke-width: 2.5px;

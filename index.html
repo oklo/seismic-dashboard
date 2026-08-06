@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="Interactive California earthquake propagation and population-impact simulator."
+      content="Interactive U.S. West Coast earthquake propagation and population-impact simulator."
     >
     <title>Quake Impact → Market Impact</title>
     <link rel="icon"
@@ -163,6 +163,7 @@
                     <select id="dashboard-region" name="dashboard-region">
                       <option value="bay">SF Bay Area</option>
                       <option value="southernCalifornia">SoCal · Cajon</option>
+                      <option value="pacificNorthwest">PNW · Cascadia</option>
                     </select>
                   </label>
                 </div>
@@ -182,6 +183,7 @@
                       <option value="hayward">Hayward scenario · M 6.8</option>
                       <option value="san-jose">San Jose scenario · M 6.5</option>
                       <option value="cajon-gate-2026">Cajon gate-open proxy · M 7.8</option>
+                      <option value="cascadia-1700">1700 Cascadia proxy · M 9.0</option>
                       <option value="custom">Custom / map placement</option>
                     </select>
                   </label>
@@ -192,7 +194,7 @@
                       <div class="input-with-unit">
                         <b>M</b>
                         <input id="magnitude" name="magnitude" type="number" value="7.9"
-                          min="2.5" max="8.5" step="0.1" inputmode="decimal" required>
+                          min="2.5" max="9.5" step="0.1" inputmode="decimal" required>
                       </div>
                     </label>
                     <label class="field">
@@ -209,12 +211,12 @@
                     <label class="field">
                       <span>Latitude</span>
                       <input id="latitude" name="latitude" type="number" value="37.750"
-                        min="32" max="43" step="0.001" inputmode="decimal" required>
+                        min="32" max="50" step="0.001" inputmode="decimal" required>
                     </label>
                     <label class="field">
                       <span>Longitude</span>
                       <input id="longitude" name="longitude" type="number" value="-122.550"
-                        min="-126" max="-114" step="0.001" inputmode="decimal" required>
+                        min="-130" max="-114" step="0.001" inputmode="decimal" required>
                     </label>
                   </div>
 

@@ -10,6 +10,7 @@ import {
   modelEsNearMonthImpact,
   modelEarthquake,
   modelPopulationImpact,
+  ruptureDurationS,
   ruptureSamples,
   surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
@@ -38,6 +39,14 @@ const STATION_CALLOUT_OFFSETS = Object.freeze({
   RVR: { x: 10, y: 5 },
   DEV: { x: 10, y: -10 },
   VCS: { x: -77, y: -28 },
+  BROK: { x: 10, y: -26 },
+  COOS: { x: 10, y: -22 },
+  DEPO: { x: 10, y: -20 },
+  PF09: { x: 10, y: -10 },
+  ASTOR: { x: 10, y: -24 },
+  ALKI: { x: 10, y: -8 },
+  HOHM: { x: -77, y: -24 },
+  EDSN: { x: 10, y: -16 },
 });
 
 const elements = {
@@ -126,9 +135,9 @@ function currentMap() {
 }
 
 function defaultPresetForRegion(regionName) {
-  return regionName === "southernCalifornia"
-    ? "cajon-gate-2026"
-    : "san-francisco-1906";
+  if (regionName === "southernCalifornia") return "cajon-gate-2026";
+  if (regionName === "pacificNorthwest") return "cascadia-1700";
+  return "san-francisco-1906";
 }
 
 function applyPreset(presetId) {
@@ -147,12 +156,29 @@ function configureRegion(regionName) {
   activeRegionName = regionName;
   elements.dashboardRegion.value = regionName;
   elements.stationNetworkLabel.textContent = region.networkLabel;
-  elements.scenarioContext.hidden = regionName !== "southernCalifornia";
+  elements.scenarioContext.hidden = regionName === "bay";
+  const contextTitle = elements.scenarioContext.querySelector("b");
+  const contextDetail = elements.scenarioContext.querySelector("span");
+  if (regionName === "southernCalifornia") {
+    contextTitle.textContent = "CAJON GATE · SCENARIO PROXY";
+    contextDetail.textContent =
+      "Joint San Jacinto–San Andreas rupture; hazard study, not a time prediction. ShakeOut losses are a separate benchmark.";
+  } else if (regionName === "pacificNorthwest") {
+    contextTitle.textContent = "CASCADIA 1700 · SHAKING SCENARIO";
+    contextDetail.textContent =
+      "M9 full-margin bilateral proxy with USGS median ensemble ShakeMap. Tsunami generation and inundation are not modeled.";
+  }
   elements.mapTitle.textContent = `${region.label} shaking, population, faults and stations`;
-  elements.mapDescription.textContent =
-    regionName === "southernCalifornia"
-      ? "Census population dots, USGS fault traces, a finite San Jacinto to San Andreas rupture through Cajon Pass, eight CI accelerometer sites, and modeled P and S wavefronts."
-      : "Census population dots, USGS Quaternary fault traces, modeled Mercalli intensity, eight BK stations, and P and S wavefronts.";
+  if (regionName === "southernCalifornia") {
+    elements.mapDescription.textContent =
+      "Census population dots, USGS fault traces, a finite San Jacinto to San Andreas rupture through Cajon Pass, eight CI accelerometer sites, and modeled P and S wavefronts.";
+  } else if (regionName === "pacificNorthwest") {
+    elements.mapDescription.textContent =
+      "U.S. Census population dots, USGS faults and median M9 ensemble ShakeMap, a bilateral full-margin Cascadia rupture proxy, eight UW/UO accelerometer sites, and modeled P and S timing guides.";
+  } else {
+    elements.mapDescription.textContent =
+      "Census population dots, USGS Quaternary fault traces, modeled Mercalli intensity, eight BK stations, and P and S wavefronts.";
+  }
   drawStaticMaps();
 }
 
@@ -250,7 +276,8 @@ function geographicBounds(map) {
 
 function drawCaliforniaInset() {
   const root = elements.californiaInset;
-  const map = CALIFORNIA_MAP_DATA.california;
+  const region = currentRegion();
+  const map = CALIFORNIA_MAP_DATA[region.overviewKey];
   const geography = svgElement("g", { class: "california-inset-geography" });
   const backdrop = svgElement("rect", {
     class: "california-inset-backdrop",
@@ -277,7 +304,7 @@ function drawCaliforniaInset() {
     x: 17,
     y: 47,
   });
-  label.textContent = "CALIFORNIA";
+  label.textContent = region.overviewLabel;
   root.replaceChildren(backdrop, geography, window, label);
 }
 
@@ -367,6 +394,8 @@ function readInput() {
   };
   if (preset?.rupture && preset.region === activeRegionName) {
     input.rupture = preset.rupture;
+    input.shakingDurationS = preset.shakingDurationS;
+    if (currentMap().shakeMap) input.shakeMap = currentMap().shakeMap;
   }
   return input;
 }
@@ -417,9 +446,13 @@ function formatExpectedChangePercent(value) {
 }
 
 function describeScenarioLocation(input, latitude, longitude) {
-  return input.rupture
-    ? "Southern California, Cajon Pass corridor"
-    : describeLocation(latitude, longitude, activeRegionName);
+  if (input.region === "pacificNorthwest" && input.rupture) {
+    return "Pacific Northwest, Cascadia coast";
+  }
+  if (input.region === "southernCalifornia" && input.rupture) {
+    return "Southern California, Cajon Pass corridor";
+  }
+  return describeLocation(latitude, longitude, activeRegionName);
 }
 
 function resetPropagationReveal() {
@@ -844,7 +877,7 @@ function enterScenarioMode() {
   stopLivePolling();
   activeDashboardMode = "scenario";
   elements.dashboardRegion.disabled = false;
-  elements.scenarioContext.hidden = activeRegionName !== "southernCalifornia";
+  elements.scenarioContext.hidden = activeRegionName === "bay";
   elements.outputModeLabel.textContent = "Simulation output";
   elements.terminalAuthMode.textContent = "HMAC-SHA256 / SIMULATED";
   elements.formNote.textContent = "";
@@ -899,32 +932,40 @@ function drawRupture(input, elapsedS = null) {
   }
   const pathData = rupturePath(currentMap(), input);
   const trace = svgElement("path", { class: "rupture-trace", d: pathData });
+  const samples = ruptureSamples(input);
+  const activeSamples =
+    elapsedS === null
+      ? []
+      : samples.filter((sample) => sample.activationAfterOriginS <= elapsedS);
+  const progressPath = activeSamples
+    .map((sample, index) => {
+      const projected = projectPoint(currentMap(), sample.latitude, sample.longitude);
+      return `${index === 0 ? "M" : "L"}${projected.x.toFixed(1)},${projected.y.toFixed(1)}`;
+    })
+    .join("");
   const progress = svgElement("path", {
     class: "rupture-progress",
-    d: pathData,
-    pathLength: 1,
+    d: activeSamples.length > 1 ? progressPath : "",
   });
-  const ruptureDurationS = ruptureSamples(input).at(-1).activationAfterOriginS;
-  const fraction =
-    elapsedS === null ? 0 : Math.max(0, Math.min(1, elapsedS / ruptureDurationS));
-  progress.style.strokeDasharray = "1";
-  progress.style.strokeDashoffset = String(1 - fraction);
-  const gate = input.rupture.points.find((point) => point.label === "Cajon Pass");
   const children = [trace, progress];
-  if (gate) {
-    const point = projectPoint(currentMap(), gate.latitude, gate.longitude);
+  input.rupture.points.filter((point) => point.label).forEach((landmark) => {
+    const point = projectPoint(
+      currentMap(),
+      landmark.latitude,
+      landmark.longitude,
+    );
     const marker = svgElement("g", {
-      class: "cajon-gate-marker",
+      class: "rupture-landmark",
       transform: `translate(${point.x} ${point.y})`,
       role: "img",
-      "aria-label": "Cajon Pass earthquake gate",
+      "aria-label": landmark.label,
     });
     marker.append(svgElement("circle", { r: 5 }));
     const label = svgElement("text", { x: 8, y: -7 });
-    label.textContent = "CAJON GATE";
+    label.textContent = landmark.markerLabel ?? landmark.label.toUpperCase();
     marker.append(label);
     children.push(marker);
-  }
+  });
   elements.ruptureLayer.replaceChildren(...children);
 }
 
@@ -1060,7 +1101,7 @@ function drawStations(result, input) {
 function phaseAt(station, elapsedS) {
   if (elapsedS < station.arrivalAfterOriginS) return "wait";
   if (elapsedS < station.strongMotionAfterOriginS) return station.triggered ? "p-pick" : "p-wave";
-  if (elapsedS < station.strongMotionAfterOriginS + WAVE_MODEL.shakingDurationS) {
+  if (elapsedS < station.strongMotionAfterOriginS + station.shakingDurationS) {
     return station.triggered ? "shaking" : "below-gate";
   }
   return station.triggered ? "recorded" : "below-gate";
@@ -1097,7 +1138,14 @@ function waveformPath(station, elapsedS) {
     let displacement = 0.35 * Math.sin(sampleTime * 7 + phaseSeed);
     if (shakingTime >= 0) {
       const peakScale = Math.min(10, 2.2 + Math.sqrt(station.peakAccelerationG) * 70);
-      const envelope = Math.exp(-shakingTime / 4.5);
+      const durationS = station.shakingDurationS ?? WAVE_MODEL.shakingDurationS;
+      const envelope =
+        durationS > 30
+          ? (0.65 + 0.35 * Math.exp(-shakingTime / 30)) *
+            (shakingTime < durationS
+              ? Math.min(1, Math.max(0, (durationS - shakingTime) / 15))
+              : Math.exp(-(shakingTime - durationS) / 2))
+          : Math.exp(-shakingTime / 4.5);
       displacement +=
         peakScale *
         envelope *
@@ -1188,8 +1236,12 @@ function sourceWavefrontPath(map, input, elapsedS, velocityKmS) {
   const activeSamples = ruptureSamples(input).filter(
     (sample) => sample.activationAfterOriginS <= elapsedS,
   );
+  const sampleStep = Math.max(1, Math.ceil(activeSamples.length / 12));
   return activeSamples
-    .filter((sample, index) => index % 4 === 0 || index === activeSamples.length - 1)
+    .filter(
+      (sample, index) =>
+        index % sampleStep === 0 || index === activeSamples.length - 1,
+    )
     .map((sample) => {
       const localElapsedS = elapsedS - sample.activationAfterOriginS;
       const radiusKm = surfaceIntersectionRadiusKm(
@@ -1398,7 +1450,7 @@ function setPlaybackState(state) {
 function simulationFinishTime(result, timeline) {
   const latestShaking = Math.max(
     ...result.stationResults.map(
-      (station) => station.strongMotionAfterOriginS + WAVE_MODEL.shakingDurationS,
+      (station) => station.strongMotionAfterOriginS + station.shakingDurationS,
     ),
   );
   const latestEvent = timeline.length ? timeline.at(-1).at + 0.6 : 0;
@@ -1591,8 +1643,16 @@ function runSimulation(event) {
     const rupture = ruptureSamples(input);
     terminalLine(
       "RUPTURE",
-      `${input.rupture.label} · ${rupture.at(-1).distanceAlongRuptureKm.toFixed(0)} km · ${input.rupture.ruptureVelocityKmS.toFixed(1)} km/s · geometry is a scenario proxy`,
+      `${input.rupture.label} · ${rupture.at(-1).distanceAlongRuptureKm.toFixed(0)} km · ${input.rupture.ruptureVelocityKmS.toFixed(1)} km/s · ${ruptureDurationS(input).toFixed(0)}s to endpoints · geometry is a scenario proxy`,
       "danger",
+      originTime,
+    );
+  }
+  if (input.shakeMap) {
+    terminalLine(
+      "SHAKEMAP",
+      `${input.shakeMap.source} · median ground-motion field · tsunami not modeled`,
+      "muted",
       originTime,
     );
   }
@@ -1689,12 +1749,18 @@ function updateClock() {
 
 const query = new URLSearchParams(window.location.search);
 const requestedPreset = PRESETS[query.get("preset")] ? query.get("preset") : null;
-const requestedRegion =
-  query.get("region") === "southernCalifornia" || query.get("view") === "cajon"
-    ? "southernCalifornia"
-    : requestedPreset
-      ? PRESETS[requestedPreset].region ?? "bay"
-      : "bay";
+let requestedRegion = requestedPreset ? PRESETS[requestedPreset].region ?? "bay" : "bay";
+if (
+  query.get("region") === "southernCalifornia" ||
+  query.get("view") === "cajon"
+) {
+  requestedRegion = "southernCalifornia";
+} else if (
+  query.get("region") === "pacificNorthwest" ||
+  query.get("view") === "cascadia"
+) {
+  requestedRegion = "pacificNorthwest";
+}
 configureRegion(requestedRegion);
 applyPreset(requestedPreset ?? defaultPresetForRegion(requestedRegion));
 if (["1", "5", "20"].includes(query.get("speed"))) {

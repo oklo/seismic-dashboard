@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { CALIFORNIA_MAP_DATA } from "./california_map.mjs";
+
 import {
   CAJON_GATE_RUPTURE,
+  CASCADIA_1700_RUPTURE,
   FEED_PROFILES,
   PRESETS,
+  PACIFIC_NORTHWEST_STATIONS,
   REGIONS,
   SOUTHERN_CALIFORNIA_STATIONS,
   STATIONS,
@@ -18,7 +22,9 @@ import {
   modelEarthquake,
   modelEsNearMonthImpact,
   modelPopulationImpact,
+  ruptureDurationS,
   ruptureSamples,
+  shakeMapGroundMotion,
   surfaceIntersectionRadiusKm,
 } from "./simulator.mjs";
 
@@ -81,6 +87,63 @@ test("Cajon gate scenario propagates across a finite multi-fault source", () => 
     [4, 6, 8],
   );
   assert.equal(result.revisions[1].classification, "major_suspected");
+});
+
+test("Cascadia view uses current professional UW and UO accelerometer sites", () => {
+  const shakeMap = CALIFORNIA_MAP_DATA.pacificNorthwest.shakeMap;
+
+  assert.equal(PACIFIC_NORTHWEST_STATIONS.length, 8);
+  assert.equal(new Set(PACIFIC_NORTHWEST_STATIONS.map((station) => station.id)).size, 8);
+  assert.ok(
+    PACIFIC_NORTHWEST_STATIONS.every(
+      (station) => station.id.startsWith("UW.") || station.id.startsWith("UO."),
+    ),
+  );
+  assert.ok(PACIFIC_NORTHWEST_STATIONS.every((station) => station.id.endsWith(".HNZ")));
+  assert.equal(REGIONS.pacificNorthwest.stations, PACIFIC_NORTHWEST_STATIONS);
+  assert.equal(PRESETS["cascadia-1700"].magnitude, 9);
+  assert.equal(PRESETS["cascadia-1700"].rupture, CASCADIA_1700_RUPTURE);
+  assert.match(shakeMap.source, /USGS median M9 Cascadia/);
+  assert.equal(shakeMap.mmi.length, shakeMap.columnCount * shakeMap.rowCount);
+  assert.equal(shakeMap.pgaPercentG.length, shakeMap.mmi.length);
+});
+
+test("1700-style Cascadia scenario uses bilateral timing and USGS ensemble shaking", () => {
+  const preset = PRESETS["cascadia-1700"];
+  const input = {
+    ...preset,
+    shakeMap: CALIFORNIA_MAP_DATA.pacificNorthwest.shakeMap,
+  };
+  const samples = ruptureSamples(input);
+  const result = modelEarthquake(input, "dart", "pacificNorthwest");
+  const impact = modelPopulationImpact(
+    input,
+    CALIFORNIA_MAP_DATA.pacificNorthwest.populationCells,
+    CALIFORNIA_MAP_DATA.pacificNorthwest.projection,
+  );
+  const depo = result.stationResults.find((station) => station.code === "DEPO");
+  const mappedDepo = shakeMapGroundMotion(
+    input.shakeMap,
+    depo.latitude,
+    depo.longitude,
+  );
+
+  assert.ok(samples.at(-1).distanceAlongRuptureKm > 950);
+  assert.ok(samples.at(-1).distanceAlongRuptureKm < 1100);
+  assert.ok(ruptureDurationS(input) > 180);
+  assert.ok(ruptureDurationS(input) < 220);
+  assert.ok(samples.some((sample) => sample.activationAfterOriginS === 0));
+  assert.ok(samples[0].activationAfterOriginS > 180);
+  assert.ok(samples.at(-1).activationAfterOriginS > 150);
+  assert.equal(result.outcome, "alerted");
+  assert.deepEqual(
+    result.revisions.map((revision) => revision.stationCount),
+    [4, 6, 8],
+  );
+  assert.equal(result.revisions[1].classification, "major_suspected");
+  assert.ok(Math.abs(depo.peakAccelerationG - mappedDepo.pgaG) < 1e-12);
+  assert.ok(impact.populationMmi6Plus > 9_000_000);
+  assert.ok(impact.maximumMmi > 8);
 });
 
 test("South Napa reference produces ordered watch and major revisions", () => {

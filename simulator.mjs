@@ -119,6 +119,68 @@ export const SOUTHERN_CALIFORNIA_STATIONS = Object.freeze([
   },
 ]);
 
+// Current UW/UO HNZ accelerometer metadata queried from the EarthScope FDSN
+// station service on 2026-08-05. These sites span the U.S. Cascadia margin for
+// scenario display only; they are not a validated live collector profile.
+export const PACIFIC_NORTHWEST_STATIONS = Object.freeze([
+  {
+    id: "UW.BROK..HNZ",
+    code: "BROK",
+    siteName: "Brookings, Oregon",
+    latitude: 42.0767,
+    longitude: -124.2934,
+  },
+  {
+    id: "UW.COOS..HNZ",
+    code: "COOS",
+    siteName: "Coos Bay, Oregon",
+    latitude: 43.39566,
+    longitude: -124.25334,
+  },
+  {
+    id: "UO.DEPO..HNZ",
+    code: "DEPO",
+    siteName: "Depoe Bay, Oregon",
+    latitude: 44.800364,
+    longitude: -124.053674,
+  },
+  {
+    id: "UO.PF09..HNZ",
+    code: "PF09",
+    siteName: "Portland, Oregon",
+    latitude: 45.510659,
+    longitude: -122.622312,
+  },
+  {
+    id: "UO.ASTOR..HNZ",
+    code: "ASTOR",
+    siteName: "Astoria, Oregon",
+    latitude: 46.18195,
+    longitude: -123.79916,
+  },
+  {
+    id: "UW.ALKI..HNZ",
+    code: "ALKI",
+    siteName: "Alki, Seattle",
+    latitude: 47.5751,
+    longitude: -122.4176,
+  },
+  {
+    id: "UW.HOHM..HNZ",
+    code: "HOHM",
+    siteName: "Hoh River, Washington",
+    latitude: 47.76627,
+    longitude: -124.30569,
+  },
+  {
+    id: "UW.EDSN..HNZ",
+    code: "EDSN",
+    siteName: "Bow, Washington",
+    latitude: 48.56202,
+    longitude: -122.43611,
+  },
+]);
+
 // Backwards-compatible name for the physically validated eight-site Bay profile.
 export const STATIONS = BAY_AREA_STATIONS;
 
@@ -130,11 +192,41 @@ export const CAJON_GATE_RUPTURE = Object.freeze({
     Object.freeze({ latitude: 33.7, longitude: -116.76 }),
     Object.freeze({ latitude: 33.9, longitude: -117.02 }),
     Object.freeze({ latitude: 34.08, longitude: -117.25 }),
-    Object.freeze({ latitude: 34.31, longitude: -117.47, label: "Cajon Pass" }),
+    Object.freeze({
+      latitude: 34.31,
+      longitude: -117.47,
+      label: "Cajon Pass",
+      markerLabel: "CAJON GATE",
+    }),
     Object.freeze({ latitude: 34.44, longitude: -117.75 }),
     Object.freeze({ latitude: 34.57, longitude: -118.05 }),
     Object.freeze({ latitude: 34.74, longitude: -118.4 }),
     Object.freeze({ latitude: 34.92, longitude: -118.75 }),
+  ]),
+});
+
+export const CASCADIA_1700_RUPTURE = Object.freeze({
+  label: "1700-style full-margin Cascadia bilateral proxy",
+  ruptureVelocityKmS: 2.8,
+  hypocenterPointIndex: 6,
+  points: Object.freeze([
+    Object.freeze({ latitude: 40.25, longitude: -124.7 }),
+    Object.freeze({ latitude: 40.95, longitude: -124.98 }),
+    Object.freeze({ latitude: 41.75, longitude: -125.1 }),
+    Object.freeze({ latitude: 42.6, longitude: -125.15 }),
+    Object.freeze({ latitude: 43.45, longitude: -125.1 }),
+    Object.freeze({ latitude: 44.3, longitude: -125.0 }),
+    Object.freeze({
+      latitude: 45.15,
+      longitude: -124.9,
+      label: "assumed hypocenter",
+      markerLabel: "ASSUMED HYPOCENTER",
+    }),
+    Object.freeze({ latitude: 46.0, longitude: -124.8 }),
+    Object.freeze({ latitude: 46.85, longitude: -124.75 }),
+    Object.freeze({ latitude: 47.7, longitude: -124.85 }),
+    Object.freeze({ latitude: 48.5, longitude: -125.1 }),
+    Object.freeze({ latitude: 49.2, longitude: -125.55 }),
   ]),
 });
 
@@ -173,6 +265,17 @@ export const PRESETS = Object.freeze({
     rupture: CAJON_GATE_RUPTURE,
     provenance:
       "Scenario proxy · Burkhard et al. 2026 Cajon gate geometry + USGS ShakeOut M7.8 scale",
+  },
+  "cascadia-1700": {
+    latitude: 45.15,
+    longitude: -124.9,
+    depthKm: 15.0,
+    magnitude: 9.0,
+    region: "pacificNorthwest",
+    rupture: CASCADIA_1700_RUPTURE,
+    shakingDurationS: 300,
+    provenance:
+      "1700 event scale · USGS M8.7–9.2 evidence + median M9 ensemble ShakeMap",
   },
 });
 
@@ -227,6 +330,17 @@ const SOUTHERN_CALIFORNIA_PLACES = Object.freeze([
   { name: "Long Beach", latitude: 33.7701, longitude: -118.1937 },
   { name: "Palmdale", latitude: 34.5794, longitude: -118.1165 },
 ]);
+const PACIFIC_NORTHWEST_PLACES = Object.freeze([
+  { name: "Cape Mendocino", latitude: 40.44, longitude: -124.4 },
+  { name: "Brookings", latitude: 42.0526, longitude: -124.28398 },
+  { name: "Coos Bay", latitude: 43.3665, longitude: -124.2179 },
+  { name: "Newport", latitude: 44.6368, longitude: -124.0535 },
+  { name: "Portland", latitude: 45.5152, longitude: -122.6784 },
+  { name: "Astoria", latitude: 46.1879, longitude: -123.8313 },
+  { name: "Olympic Peninsula", latitude: 47.8, longitude: -123.9 },
+  { name: "Seattle", latitude: 47.6062, longitude: -122.3321 },
+  { name: "Bellingham", latitude: 48.7519, longitude: -122.4787 },
+]);
 const MIN_STATION_SPAN_KM = 20.0;
 const TRIGGER_PEAK_G = 0.00012;
 const MAJOR_MEDIAN_PEAK_G = 0.00075;
@@ -235,6 +349,8 @@ export const REGIONS = Object.freeze({
   bay: Object.freeze({
     label: "SF Bay Area",
     mapKey: "bay",
+    overviewKey: "california",
+    overviewLabel: "CALIFORNIA",
     eventPrefix: "bay",
     networkLabel: "BK · HNZ",
     stations: BAY_AREA_STATIONS,
@@ -249,6 +365,8 @@ export const REGIONS = Object.freeze({
   southernCalifornia: Object.freeze({
     label: "Southern California",
     mapKey: "southernCalifornia",
+    overviewKey: "california",
+    overviewLabel: "CALIFORNIA",
     eventPrefix: "socal",
     networkLabel: "CI · HNZ",
     stations: SOUTHERN_CALIFORNIA_STATIONS,
@@ -258,6 +376,22 @@ export const REGIONS = Object.freeze({
       latitudeMax: 35.1,
       longitudeMin: -119.4,
       longitudeMax: -115.3,
+    }),
+  }),
+  pacificNorthwest: Object.freeze({
+    label: "Pacific Northwest",
+    mapKey: "pacificNorthwest",
+    overviewKey: "westCoast",
+    overviewLabel: "PACIFIC COAST",
+    eventPrefix: "csz",
+    networkLabel: "UW/UO · HNZ",
+    stations: PACIFIC_NORTHWEST_STATIONS,
+    places: PACIFIC_NORTHWEST_PLACES,
+    associationGrid: Object.freeze({
+      latitudeMin: 40.0,
+      latitudeMax: 49.3,
+      longitudeMin: -127.25,
+      longitudeMax: -117.5,
     }),
   }),
 });
@@ -309,16 +443,46 @@ export function ruptureSamples(input) {
       samples.push({
         latitude: previous.latitude + (point.latitude - previous.latitude) * fraction,
         longitude: previous.longitude + (point.longitude - previous.longitude) * fraction,
-        activationAfterOriginS:
-          distanceAlongRuptureKm / input.rupture.ruptureVelocityKmS,
         distanceAlongRuptureKm,
       });
     }
     accumulatedKm += segmentKm;
   });
-  const frozen = Object.freeze(samples.map((sample) => Object.freeze(sample)));
+  const hypocenterPointIndex = input.rupture.hypocenterPointIndex ?? 0;
+  const hypocenterPoint = input.rupture.points[hypocenterPointIndex];
+  const hypocenterSample = samples.reduce((nearest, sample) =>
+    haversineKm(
+      sample.latitude,
+      sample.longitude,
+      hypocenterPoint.latitude,
+      hypocenterPoint.longitude,
+    ) <
+    haversineKm(
+      nearest.latitude,
+      nearest.longitude,
+      hypocenterPoint.latitude,
+      hypocenterPoint.longitude,
+    )
+      ? sample
+      : nearest,
+  );
+  const frozen = Object.freeze(
+    samples.map((sample) =>
+      Object.freeze({
+        ...sample,
+        activationAfterOriginS:
+          Math.abs(
+            sample.distanceAlongRuptureKm - hypocenterSample.distanceAlongRuptureKm,
+          ) / input.rupture.ruptureVelocityKmS,
+      }),
+    ),
+  );
   RUPTURE_SAMPLE_CACHE.set(input.rupture, frozen);
   return frozen;
+}
+
+export function ruptureDurationS(input) {
+  return Math.max(...ruptureSamples(input).map((sample) => sample.activationAfterOriginS));
 }
 
 export function sourceSiteMetrics(input, latitude, longitude) {
@@ -443,12 +607,54 @@ export function modifiedMercalliFromPga(pgaG) {
   return Math.max(1, Math.min(10, intensity));
 }
 
+export function shakeMapGroundMotion(shakeMap, latitude, longitude) {
+  if (!shakeMap) return null;
+  if (![latitude, longitude].every(Number.isFinite)) {
+    throw new TypeError("ShakeMap coordinates must be numbers.");
+  }
+  const rawX = (longitude - shakeMap.longitudeMin) / shakeMap.longitudeStep;
+  const rawY = (shakeMap.latitudeMax - latitude) / shakeMap.latitudeStep;
+  if (
+    rawX < -1 ||
+    rawY < -1 ||
+    rawX > shakeMap.columnCount ||
+    rawY > shakeMap.rowCount
+  ) {
+    return null;
+  }
+  // The checked-in grid is a five-sample downsample of a finer USGS field. Clamp
+  // only the sub-cell crop margin at the regional boundary to its nearest value.
+  const x = Math.max(0, Math.min(shakeMap.columnCount - 1, rawX));
+  const y = Math.max(0, Math.min(shakeMap.rowCount - 1, rawY));
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(shakeMap.columnCount - 1, x0 + 1);
+  const y1 = Math.min(shakeMap.rowCount - 1, y0 + 1);
+  const xFraction = x - x0;
+  const yFraction = y - y0;
+  const interpolate = (values) => {
+    const topLeft = values[y0 * shakeMap.columnCount + x0];
+    const topRight = values[y0 * shakeMap.columnCount + x1];
+    const bottomLeft = values[y1 * shakeMap.columnCount + x0];
+    const bottomRight = values[y1 * shakeMap.columnCount + x1];
+    const top = topLeft + (topRight - topLeft) * xFraction;
+    const bottom = bottomLeft + (bottomRight - bottomLeft) * xFraction;
+    return top + (bottom - top) * yFraction;
+  };
+  return {
+    intensity: interpolate(shakeMap.mmi),
+    pgaG: interpolate(shakeMap.pgaPercentG) / 100,
+  };
+}
+
 export function estimateMercalliAtLocation(input, latitude, longitude) {
   const sourceMetrics = sourceSiteMetrics(
     input,
     latitude,
     longitude,
   );
+  const mappedMotion = shakeMapGroundMotion(input.shakeMap, latitude, longitude);
+  if (mappedMotion) return { ...mappedMotion, ...sourceMetrics };
   const pgaG = estimateExposurePeakAccelerationG(
     input.magnitude,
     sourceMetrics.hypocentralDistanceKm,
@@ -553,7 +759,7 @@ function buildRevision(number, classification, group, input, detectionAtS, sourc
 function validateInput(input) {
   const fields = [input.magnitude, input.latitude, input.longitude, input.depthKm];
   if (!fields.every(Number.isFinite)) throw new TypeError("Earthquake inputs must be numbers.");
-  if (input.magnitude < 2.5 || input.magnitude > 8.5) throw new RangeError("Magnitude must be between 2.5 and 8.5.");
+  if (input.magnitude < 2.5 || input.magnitude > 9.5) throw new RangeError("Magnitude must be between 2.5 and 9.5.");
   if (input.latitude < -90 || input.latitude > 90) throw new RangeError("Latitude is outside its valid range.");
   if (input.longitude < -180 || input.longitude > 180) throw new RangeError("Longitude is outside its valid range.");
   if (input.depthKm < 0 || input.depthKm > 700) throw new RangeError("Depth is outside the model range.");
@@ -573,6 +779,31 @@ function validateInput(input) {
     ) {
       throw new TypeError("Finite rupture requires at least two valid coordinates.");
     }
+    const hypocenterPointIndex = input.rupture.hypocenterPointIndex ?? 0;
+    if (
+      !Number.isInteger(hypocenterPointIndex) ||
+      hypocenterPointIndex < 0 ||
+      hypocenterPointIndex >= input.rupture.points.length
+    ) {
+      throw new RangeError("Rupture hypocenter point is outside the rupture geometry.");
+    }
+  }
+  if (input.shakeMap) {
+    const expectedValues = input.shakeMap.columnCount * input.shakeMap.rowCount;
+    if (
+      !Number.isInteger(input.shakeMap.columnCount) ||
+      !Number.isInteger(input.shakeMap.rowCount) ||
+      input.shakeMap.columnCount < 2 ||
+      input.shakeMap.rowCount < 2 ||
+      !Number.isFinite(input.shakeMap.longitudeStep) ||
+      !Number.isFinite(input.shakeMap.latitudeStep) ||
+      input.shakeMap.longitudeStep <= 0 ||
+      input.shakeMap.latitudeStep <= 0 ||
+      input.shakeMap.mmi?.length !== expectedValues ||
+      input.shakeMap.pgaPercentG?.length !== expectedValues
+    ) {
+      throw new TypeError("ShakeMap field dimensions are invalid.");
+    }
   }
 }
 
@@ -590,13 +821,18 @@ export function modelEarthquake(input, profileName = "dart", regionName = null) 
       station.latitude,
       station.longitude,
     );
-    const peakAccelerationG = estimatePeakAccelerationG(
-      input.magnitude,
-      sourceMetrics.hypocentralDistanceKm,
+    const mappedMotion = shakeMapGroundMotion(
+      input.shakeMap,
+      station.latitude,
+      station.longitude,
     );
+    const peakAccelerationG =
+      mappedMotion?.pgaG ??
+      estimatePeakAccelerationG(input.magnitude, sourceMetrics.hypocentralDistanceKm);
     return {
       ...station,
       ...sourceMetrics,
+      shakingDurationS: input.shakingDurationS ?? WAVE_MODEL.shakingDurationS,
       peakAccelerationG,
       triggered: peakAccelerationG >= TRIGGER_PEAK_G,
     };

@@ -7,6 +7,7 @@ import json
 import math
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,10 @@ BLOCK_URL = (
     "https://tigerweb.geo.census.gov/arcgis/rest/services/"
     "TIGERweb/Tracts_Blocks/MapServer/12/query"
 )
+TRACT_URL = (
+    "https://tigerweb.geo.census.gov/arcgis/rest/services/"
+    "TIGERweb/Tracts_Blocks/MapServer/10/query"
+)
 FAULT_URL = (
     "https://services2.arcgis.com/OCysFFatYM3MITwS/arcgis/rest/services/"
     "Quaternary_Faults/FeatureServer/0/query"
@@ -30,8 +35,16 @@ SOURCE_LABEL = (
     "USGS Quaternary Fault and Fold Database"
 )
 CALIFORNIA_BOUNDS = (-124.65, 32.3, -114.0, 42.1)
+WEST_COAST_BOUNDS = (-125.1, 32.3, -116.5, 49.3)
 BAY_BOUNDS = (-123.95, 36.95, -121.45, 38.55)
 SOUTHERN_CALIFORNIA_BOUNDS = (-119.4, 32.7, -115.3, 35.1)
+PACIFIC_NORTHWEST_BOUNDS = (-127.25, 40.0, -117.5, 49.3)
+CALIFORNIA_STATE_WHERE = "STATE='06'"
+WEST_COAST_STATE_WHERE = "STATE IN ('06','41','53')"
+USGS_CASCADIA_MEDIAN_GRID_URL = (
+    "https://earthquake.usgs.gov/product/shakemap-scenario/"
+    "_median_se/us/1605643892799/download/grid.xml"
+)
 BAY_FAULT_NAMES = (
     "San Andreas fault zone",
     "San Gregorio fault zone",
@@ -50,6 +63,17 @@ SOUTHERN_CALIFORNIA_FAULT_NAMES = (
     "Newport-Inglewood fault zone",
     "Sierra Madre fault zone",
     "Garlock fault zone",
+)
+PACIFIC_NORTHWEST_FAULT_NAMES = (
+    "Cascadia megathrust",
+    "Little Salmon fault zone",
+    "Mad River fault zone",
+    "Gales Creek fault zone",
+    "Portland Hills fault",
+    "Seattle fault zone",
+    "Tacoma fault",
+    "southern Whidbey Island fault zone",
+    "Darrington-Devils Mountain fault",
 )
 
 
@@ -256,7 +280,7 @@ def _intersects(
 
 
 def _map_data(
-    state: dict[str, Any],
+    states: list[dict[str, Any]],
     counties: list[dict[str, Any]],
     projection: Projection,
     bounds: tuple[float, float, float, float],
@@ -281,7 +305,11 @@ def _map_data(
         )
     return {
         "projection": projection.to_dict(),
-        "statePath": _path(state["geometry"], projection, tolerance),
+        "statePath": "".join(
+            _path(state["geometry"], projection, tolerance)
+            for state in sorted(states, key=lambda item: item["properties"]["GEOID"])
+            if _intersects(_geometry_bounds(state["geometry"]), bounds)
+        ),
         "counties": included_counties,
     }
 
@@ -335,17 +363,81 @@ def _fault_data(
     ]
 
 
+def _cascadia_shakemap(
+    bounds: tuple[float, float, float, float], downsample: int = 5
+) -> dict[str, Any]:
+    request = urllib.request.Request(
+        USGS_CASCADIA_MEDIAN_GRID_URL,
+        headers={"User-Agent": "economic-seismology-map-builder/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        root = ET.fromstring(response.read())
+    namespace = "{http://earthquake.usgs.gov/eqcenter/shakemap}"
+    specification = root.find(f"{namespace}grid_specification")
+    grid_data = root.find(f"{namespace}grid_data")
+    if specification is None or grid_data is None or not grid_data.text:
+        raise RuntimeError("USGS Cascadia ShakeMap grid is incomplete")
+
+    column_count = int(specification.attrib["nlon"])
+    row_count = int(specification.attrib["nlat"])
+    rows = [line.split() for line in grid_data.text.splitlines() if line.strip()]
+    if len(rows) != column_count * row_count:
+        raise RuntimeError("USGS Cascadia ShakeMap grid dimensions do not match")
+
+    valid_columns = [
+        column
+        for column in range(column_count)
+        if bounds[0] <= float(rows[column][0]) <= bounds[2]
+    ]
+    valid_rows = [
+        row
+        for row in range(row_count)
+        if bounds[1] <= float(rows[row * column_count][1]) <= bounds[3]
+    ]
+    selected_columns = valid_columns[::downsample]
+    selected_rows = valid_rows[::downsample]
+    if len(selected_columns) < 2 or len(selected_rows) < 2:
+        raise RuntimeError("USGS Cascadia ShakeMap does not cover the map extent")
+
+    values = [
+        rows[row * column_count + column]
+        for row in selected_rows
+        for column in selected_columns
+    ]
+    first = values[0]
+    second_column = values[1]
+    second_row = values[len(selected_columns)]
+    return {
+        "source": "USGS median M9 Cascadia ensemble ShakeMap (Wirth et al. 2021)",
+        "sourceUrl": "https://earthquake.usgs.gov/scenarios/catalog/cszm9/",
+        "longitudeMin": float(first[0]),
+        "latitudeMax": float(first[1]),
+        "longitudeStep": round(float(second_column[0]) - float(first[0]), 4),
+        "latitudeStep": round(float(first[1]) - float(second_row[1]), 4),
+        "columnCount": len(selected_columns),
+        "rowCount": len(selected_rows),
+        "mmi": [float(value[2]) for value in values],
+        "pgaPercentG": [float(value[3]) for value in values],
+    }
+
+
 def _build_region(
-    state: dict[str, Any],
+    states: list[dict[str, Any]],
     counties: list[dict[str, Any]],
     bounds: tuple[float, float, float, float],
     fault_names: tuple[str, ...],
+    state_where: str = CALIFORNIA_STATE_WHERE,
+    population_url: str = BLOCK_URL,
+    population_note: str = (
+        "2020 Census populated-block internal points; 1.5 px aggregation"
+    ),
 ) -> dict[str, Any]:
     projection = _projection(bounds, 840, 680, 16)
-    region = _map_data(state, counties, projection, bounds, 0.0015)
+    region = _map_data(states, counties, projection, bounds, 0.0015)
     block_collection = _query(
-        BLOCK_URL,
+        population_url,
         "OBJECTID,GEOID,POP100,INTPTLAT,INTPTLON",
+        where=state_where,
         bounds=bounds,
         return_geometry=False,
     )
@@ -365,9 +457,8 @@ def _build_region(
     )
     region["populationCells"] = population_cells
     region["populationTotal"] = population_total
-    region["peoplePerCellNote"] = (
-        "2020 Census populated-block internal points; 1.5 px aggregation"
-    )
+    region["peoplePerCellNote"] = population_note
+    region["populationSourceUrl"] = population_url
     region["faults"] = _fault_data(
         fault_collection["features"], projection, fault_names
     )
@@ -375,23 +466,58 @@ def _build_region(
 
 
 def build(output: Path) -> None:
-    state_collection = _query(STATE_URL, "GEOID,NAME")
-    county_collection = _query(COUNTY_URL, "GEOID,NAME,CENTLAT,CENTLON")
-    state = state_collection["features"][0]
+    state_collection = _query(
+        STATE_URL, "GEOID,NAME", where=WEST_COAST_STATE_WHERE
+    )
+    county_collection = _query(
+        COUNTY_URL,
+        "GEOID,NAME,CENTLAT,CENTLON",
+        where=WEST_COAST_STATE_WHERE,
+    )
+    states = state_collection["features"]
+    california_states = [
+        state for state in states if state["properties"]["GEOID"] == "06"
+    ]
     counties = county_collection["features"]
+    california_counties = [
+        county
+        for county in counties
+        if county["properties"]["GEOID"].startswith("06")
+    ]
     california = _map_data(
-        state,
-        counties,
+        california_states,
+        california_counties,
         _projection(CALIFORNIA_BOUNDS, 260, 420, 12),
         CALIFORNIA_BOUNDS,
         0.004,
     )
-    bay = _build_region(state, counties, BAY_BOUNDS, BAY_FAULT_NAMES)
-    southern_california = _build_region(
-        state,
+    west_coast = _map_data(
+        states,
         counties,
+        _projection(WEST_COAST_BOUNDS, 260, 420, 12),
+        WEST_COAST_BOUNDS,
+        0.005,
+    )
+    bay = _build_region(
+        california_states, california_counties, BAY_BOUNDS, BAY_FAULT_NAMES
+    )
+    southern_california = _build_region(
+        california_states,
+        california_counties,
         SOUTHERN_CALIFORNIA_BOUNDS,
         SOUTHERN_CALIFORNIA_FAULT_NAMES,
+    )
+    pacific_northwest = _build_region(
+        states,
+        counties,
+        PACIFIC_NORTHWEST_BOUNDS,
+        PACIFIC_NORTHWEST_FAULT_NAMES,
+        WEST_COAST_STATE_WHERE,
+        TRACT_URL,
+        "2020 Census tract internal points; U.S. population only",
+    )
+    pacific_northwest["shakeMap"] = _cascadia_shakemap(
+        PACIFIC_NORTHWEST_BOUNDS
     )
     payload = {
         "source": SOURCE_LABEL,
@@ -400,8 +526,10 @@ def build(output: Path) -> None:
         "TIGERweb/Tracts_Blocks/MapServer/12",
         "faultSourceUrl": "https://doi.org/10.5066/P9BCVRCK",
         "california": california,
+        "westCoast": west_coast,
         "bay": bay,
         "southernCalifornia": southern_california,
+        "pacificNorthwest": pacific_northwest,
     }
     compact = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
     output.write_text(
