@@ -1647,11 +1647,19 @@ function setFormLocked(locked) {
 function setPlaybackState(state) {
   const paused = state === "paused";
   const running = state === "running";
+  const canStop = running || paused;
   elements.play.disabled = running;
   elements.pause.disabled = !running;
   const playLabel = paused ? "Resume simulation" : "Play simulation";
   elements.play.setAttribute("aria-label", playLabel);
   elements.play.title = playLabel;
+  elements.reset.textContent = canStop ? "Stop" : "Reset";
+  elements.reset.classList.toggle("is-stop", canStop);
+  const resetLabel = canStop
+    ? "Stop simulation and return to initial state"
+    : "Reset simulation to initial state";
+  elements.reset.setAttribute("aria-label", resetLabel);
+  elements.reset.title = resetLabel;
 }
 
 function simulationFinishTime(result, timeline) {

@@ -38,7 +38,10 @@ map, and press **Run simulation**. The dashboard includes:
 - Depth-aware P- and S-wave surface intersections driven by one monotonic clock;
   playback defaults to real time and does not drift after dropped rendering frames.
   Pause/resume freezes event order and accumulated shaking, then shifts the clock
-  origin so playback continues from the same instant.
+  origin so playback continues from the same instant. During active or paused
+  runs, **Reset** becomes **Stop** and immediately cancels the remaining timeline
+  before restoring the selected scenario's initial terminal, map, stations, and
+  metrics.
 - Population at modeled MMI VI or higher, an initial population × intensity
   impact index, and a conditional expected percent change for the CME near-month
   E-mini S&P 500 future (ES).
