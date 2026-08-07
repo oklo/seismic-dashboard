@@ -45,19 +45,31 @@ HAZUS_LIQUEFACTION_SOURCE_URL = (
 )
 SOURCE_LABEL = (
     "U.S. Census Bureau TIGERweb 2020 population and 2024 generalized boundaries; "
-    "USGS Quaternary Fault and Fold Database, ShakeMap, and Bay liquefaction "
-    "susceptibility; FEMA Hazus 6.1 liquefaction model"
+    "USGS Quaternary Fault and Fold Database, West Coast and New Madrid ShakeMap "
+    "scenarios, and Bay liquefaction susceptibility; FEMA Hazus 6.1 liquefaction "
+    "model"
 )
 CALIFORNIA_BOUNDS = (-124.65, 32.3, -114.0, 42.1)
 WEST_COAST_BOUNDS = (-125.1, 32.3, -116.5, 49.3)
+CONTIGUOUS_US_BOUNDS = (-125.0, 24.0, -66.5, 50.0)
 BAY_BOUNDS = (-123.95, 36.95, -121.45, 38.55)
 SOUTHERN_CALIFORNIA_BOUNDS = (-119.4, 32.7, -115.3, 35.1)
 PACIFIC_NORTHWEST_BOUNDS = (-127.25, 40.0, -117.5, 49.3)
+NEW_MADRID_BOUNDS = (-94.5, 33.0, -84.0, 42.35)
 CALIFORNIA_STATE_WHERE = "STATE='06'"
 WEST_COAST_STATE_WHERE = "STATE IN ('06','41','53')"
+CONTIGUOUS_STATE_WHERE = "STATE NOT IN ('02','15','60','66','69','72','78')"
+CENTRAL_US_STATE_WHERE = (
+    "STATE IN ('01','05','12','13','17','18','19','20','21','22','26','28',"
+    "'29','37','39','40','45','47','48','51','54','55')"
+)
 USGS_CASCADIA_MEDIAN_GRID_URL = (
     "https://earthquake.usgs.gov/product/shakemap-scenario/"
     "_median_se/us/1605643892799/download/grid.xml"
+)
+USGS_NEW_MADRID_M75_GRID_URL = (
+    "https://earthquake.usgs.gov/product/shakemap-scenario/"
+    "bssc2014newmadrid_32_m7p5_se/us/1494866931150/download/grid.xml"
 )
 BAY_SHAKEMAPS = {
     "san-francisco-1906": {
@@ -617,9 +629,10 @@ def _build_region(
     population_note: str = (
         "2020 Census populated-block internal points; 1.5 px aggregation"
     ),
+    boundary_tolerance: float = 0.0015,
 ) -> dict[str, Any]:
     projection = _projection(bounds, 840, 680, 16)
-    region = _map_data(states, counties, projection, bounds, 0.0015)
+    region = _map_data(states, counties, projection, bounds, boundary_tolerance)
     block_collection = _query(
         population_url,
         "OBJECTID,GEOID,POP100,INTPTLAT,INTPTLON",
@@ -630,41 +643,59 @@ def _build_region(
     population_cells, population_total = _population_cells(
         block_collection["features"], projection, bounds
     )
-    fault_where = "fault_name IN (" + ",".join(
-        f"'{name}'" for name in fault_names
-    ) + ")"
-    fault_collection = _query(
-        FAULT_URL,
-        "OBJECTID,fault_name,section_name,fault_id,section_id,age,slip_rate,class,"
-        "mapped_certainty",
-        where=fault_where,
-        bounds=bounds,
-        page_size=2_000,
-    )
+    fault_features: list[dict[str, Any]] = []
+    if fault_names:
+        fault_where = "fault_name IN (" + ",".join(
+            f"'{name}'" for name in fault_names
+        ) + ")"
+        fault_collection = _query(
+            FAULT_URL,
+            "OBJECTID,fault_name,section_name,fault_id,section_id,age,slip_rate,class,"
+            "mapped_certainty",
+            where=fault_where,
+            bounds=bounds,
+            page_size=2_000,
+        )
+        fault_features = fault_collection["features"]
     region["populationCells"] = population_cells
     region["populationTotal"] = population_total
     region["peoplePerCellNote"] = population_note
     region["populationSourceUrl"] = population_url
     region["faults"] = _fault_data(
-        fault_collection["features"], projection, fault_names
+        fault_features, projection, fault_names
     )
     return region
 
 
 def build(output: Path) -> None:
     state_collection = _query(
-        STATE_URL, "GEOID,NAME", where=WEST_COAST_STATE_WHERE
+        STATE_URL, "GEOID,NAME", where=CONTIGUOUS_STATE_WHERE
     )
     county_collection = _query(
         COUNTY_URL,
         "GEOID,NAME,CENTLAT,CENTLON",
         where=WEST_COAST_STATE_WHERE,
     )
+    central_county_collection = _query(
+        COUNTY_URL,
+        "GEOID,NAME,CENTLAT,CENTLON",
+        where=CENTRAL_US_STATE_WHERE,
+    )
     states = state_collection["features"]
     california_states = [
         state for state in states if state["properties"]["GEOID"] == "06"
     ]
     counties = county_collection["features"]
+    central_states = [
+        state
+        for state in states
+        if state["properties"]["GEOID"]
+        in {
+            "01", "05", "12", "13", "17", "18", "19", "20", "21", "22", "26",
+            "28", "29", "37", "39", "40", "45", "47", "48", "51", "54", "55",
+        }
+    ]
+    central_counties = central_county_collection["features"]
     california_counties = [
         county
         for county in counties
@@ -683,6 +714,13 @@ def build(output: Path) -> None:
         _projection(WEST_COAST_BOUNDS, 260, 420, 12),
         WEST_COAST_BOUNDS,
         0.005,
+    )
+    contiguous_united_states = _map_data(
+        states,
+        [],
+        _projection(CONTIGUOUS_US_BOUNDS, 260, 420, 12),
+        CONTIGUOUS_US_BOUNDS,
+        0.02,
     )
     bay = _build_region(
         california_states, california_counties, BAY_BOUNDS, BAY_FAULT_NAMES
@@ -732,6 +770,29 @@ def build(output: Path) -> None:
         source_kind="median planning scenario",
         downsample=5,
     )
+    central_united_states = _build_region(
+        central_states,
+        central_counties,
+        NEW_MADRID_BOUNDS,
+        (),
+        CENTRAL_US_STATE_WHERE,
+        TRACT_URL,
+        "2020 Census tract internal points; U.S. population only",
+        boundary_tolerance=0.005,
+    )
+    central_united_states["shakeMaps"] = {
+        "new-madrid-m7.5": _shakemap_grid(
+            USGS_NEW_MADRID_M75_GRID_URL,
+            NEW_MADRID_BOUNDS,
+            source="USGS BSSC2014 New Madrid central-fault M7.5 scenario ShakeMap",
+            source_url=(
+                "https://earthquake.usgs.gov/scenarios/eventpage/"
+                "bssc2014newmadrid_32_m7p5_se/shakemap"
+            ),
+            source_kind="median planning scenario",
+            downsample=5,
+        )
+    }
     payload = {
         "source": SOURCE_LABEL,
         "boundarySourceUrl": BOUNDARY_SERVICE,
@@ -740,9 +801,11 @@ def build(output: Path) -> None:
         "faultSourceUrl": "https://doi.org/10.5066/P9BCVRCK",
         "california": california,
         "westCoast": west_coast,
+        "contiguousUnitedStates": contiguous_united_states,
         "bay": bay,
         "southernCalifornia": southern_california,
         "pacificNorthwest": pacific_northwest,
+        "centralUnitedStates": central_united_states,
     }
     compact = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
     output.write_text(

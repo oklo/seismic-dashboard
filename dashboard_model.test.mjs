@@ -6,10 +6,12 @@ import { CALIFORNIA_MAP_DATA } from "./california_map.mjs";
 import {
   CAJON_GATE_RUPTURE,
   CASCADIA_1700_RUPTURE,
+  CENTRAL_US_STATIONS,
   FEED_PROFILES,
   HAZUS_LIQUEFACTION_MODEL,
   PRESETS,
   PACIFIC_NORTHWEST_STATIONS,
+  NEW_MADRID_M75_RUPTURE,
   REGIONS,
   SOUTHERN_CALIFORNIA_STATIONS,
   STATIONS,
@@ -206,6 +208,63 @@ test("1700-style Cascadia scenario uses bilateral timing and USGS ensemble shaki
   assert.ok(Math.abs(depo.peakAccelerationG - mappedDepo.pgaG) < 1e-12);
   assert.ok(impact.populationMmi6Plus > 9_000_000);
   assert.ok(impact.maximumMmi > 8);
+});
+
+test("New Madrid view uses current professional NM accelerometer sites", () => {
+  const map = CALIFORNIA_MAP_DATA.centralUnitedStates;
+  const shakeMap = map.shakeMaps["new-madrid-m7.5"];
+
+  assert.equal(CENTRAL_US_STATIONS.length, 8);
+  assert.equal(new Set(CENTRAL_US_STATIONS.map((station) => station.id)).size, 8);
+  assert.ok(CENTRAL_US_STATIONS.every((station) => station.id.startsWith("NM.")));
+  assert.ok(CENTRAL_US_STATIONS.every((station) => station.id.endsWith(".HNZ")));
+  assert.equal(REGIONS.centralUnitedStates.stations, CENTRAL_US_STATIONS);
+  assert.equal(PRESETS["new-madrid-m7.5"].magnitude, 7.5);
+  assert.equal(PRESETS["new-madrid-m7.5"].rupture, NEW_MADRID_M75_RUPTURE);
+  assert.match(shakeMap.source, /USGS BSSC2014 New Madrid/);
+  assert.equal(shakeMap.mmi.length, shakeMap.columnCount * shakeMap.rowCount);
+  assert.equal(shakeMap.pgaPercentG.length, shakeMap.mmi.length);
+  assert.equal(shakeMap.pgvCms.length, shakeMap.mmi.length);
+  assert.equal(map.faults.length, 0);
+});
+
+test("New Madrid scenario separates official amplitude from assumed rupture timing", () => {
+  const preset = PRESETS["new-madrid-m7.5"];
+  const input = {
+    ...preset,
+    shakeMap:
+      CALIFORNIA_MAP_DATA.centralUnitedStates.shakeMaps[preset.shakeMapKey],
+  };
+  const samples = ruptureSamples(input);
+  const result = modelEarthquake(input, "dart", "centralUnitedStates");
+  const impact = modelPopulationImpact(
+    input,
+    CALIFORNIA_MAP_DATA.centralUnitedStates.populationCells,
+    CALIFORNIA_MAP_DATA.centralUnitedStates.projection,
+  );
+  const penm = result.stationResults.find((station) => station.code === "PENM");
+  const mappedPenm = shakeMapGroundMotion(
+    input.shakeMap,
+    penm.latitude,
+    penm.longitude,
+  );
+
+  assert.ok(samples.at(-1).distanceAlongRuptureKm > 45);
+  assert.ok(samples.at(-1).distanceAlongRuptureKm < 55);
+  assert.ok(ruptureDurationS(input) > 8);
+  assert.ok(ruptureDurationS(input) < 10);
+  assert.ok(samples.some((sample) => sample.activationAfterOriginS === 0));
+  assert.match(input.rupture.sourceNote, /USGS finite-rupture polygon/);
+  assert.equal(result.outcome, "alerted");
+  assert.deepEqual(
+    result.revisions.map((revision) => revision.stationCount),
+    [4, 6, 8],
+  );
+  assert.equal(result.revisions[1].classification, "major_suspected");
+  assert.ok(Math.abs(penm.peakAccelerationG - mappedPenm.pgaG) < 1e-12);
+  assert.ok(impact.populationMmi6Plus > 2_500_000);
+  assert.ok(impact.maximumMmi > 8);
+  assert.ok(impact.impactIndex > 4);
 });
 
 test("South Napa reference produces ordered watch and major revisions", () => {

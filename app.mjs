@@ -95,6 +95,7 @@ const elements = {
   metricPeakMmi: document.querySelector("#metric-peak-mmi"),
   metricPopulationExposed: document.querySelector("#metric-population-exposed"),
   metricLiquefactionExposed: document.querySelector("#metric-liquefaction-exposed"),
+  metricLiquefactionNote: document.querySelector("#metric-liquefaction-note"),
   metricImpactIndex: document.querySelector("#metric-impact-index"),
   metricEsChange: document.querySelector("#metric-es-change"),
   terminal: document.querySelector("#terminal-screen"),
@@ -147,6 +148,7 @@ function currentMap() {
 function defaultPresetForRegion(regionName) {
   if (regionName === "southernCalifornia") return "cajon-gate-2026";
   if (regionName === "pacificNorthwest") return "cascadia-1700";
+  if (regionName === "centralUnitedStates") return "new-madrid-m7.5";
   return "san-francisco-1906";
 }
 
@@ -206,6 +208,10 @@ function configureRegion(regionName) {
     contextTitle.textContent = "CASCADIA 1700 · SHAKING SCENARIO";
     contextDetail.textContent =
       "M9 full-margin bilateral proxy with USGS median ensemble ShakeMap. Tsunami generation and inundation are not modeled.";
+  } else if (regionName === "centralUnitedStates") {
+    contextTitle.textContent = "NEW MADRID · USGS M7.5 SCENARIO";
+    contextDetail.textContent =
+      "Official BSSC2014 median ShakeMap and finite rupture. Planning scenario, not an 1811–1812 reconstruction.";
   }
   elements.mapTitle.textContent = `${region.label} shaking, population, faults and stations`;
   if (regionName === "southernCalifornia") {
@@ -214,6 +220,9 @@ function configureRegion(regionName) {
   } else if (regionName === "pacificNorthwest") {
     elements.mapDescription.textContent =
       "U.S. Census population dots, USGS faults and median M9 ensemble ShakeMap, a bilateral full-margin Cascadia rupture proxy, eight UW/UO accelerometer sites, and modeled P and S timing guides.";
+  } else if (regionName === "centralUnitedStates") {
+    elements.mapDescription.textContent =
+      "U.S. Census population dots, the USGS M7.5 New Madrid scenario ShakeMap and buried-source rupture, eight NM accelerometer sites, and modeled P and S timing guides.";
   } else {
     elements.mapDescription.textContent =
       "Census population dots, event-specific USGS ShakeMap ground motion where available, Bay liquefaction susceptibility and modeled probability, Quaternary fault traces, eight BK stations, and P and S wavefronts.";
@@ -570,6 +579,9 @@ function describeScenarioLocation(input, latitude, longitude) {
   if (input.region === "southernCalifornia" && input.rupture) {
     return "Southern California, Cajon Pass corridor";
   }
+  if (input.region === "centralUnitedStates" && input.rupture) {
+    return "Central U.S., New Madrid seismic zone";
+  }
   return describeLocation(latitude, longitude, activeRegionName);
 }
 
@@ -591,7 +603,11 @@ function resetPropagationReveal() {
   reachedLiquefactionPopulation = 0;
   reachedImpactMass = 0;
   elements.metricPopulationExposed.textContent = "0";
-  elements.metricLiquefactionExposed.textContent = "0";
+  const modelsLiquefaction = Boolean(currentMap().liquefaction);
+  elements.metricLiquefactionExposed.textContent = modelsLiquefaction ? "0" : "—";
+  elements.metricLiquefactionNote.textContent = modelsLiquefaction
+    ? "modeled residents"
+    : "not modeled";
   elements.metricImpactIndex.textContent = "0.0";
   elements.metricEsChange.textContent = "0.00%";
 }
@@ -652,9 +668,11 @@ function updatePropagationReveal(elapsedS) {
     elements.metricPopulationExposed.textContent = formatPopulation(
       impact.populationMmi6Plus,
     );
-    elements.metricLiquefactionExposed.textContent = formatPopulation(
-      reachedLiquefactionPopulation,
-    );
+    if (currentMap().liquefaction) {
+      elements.metricLiquefactionExposed.textContent = formatPopulation(
+        reachedLiquefactionPopulation,
+      );
+    }
     elements.metricImpactIndex.textContent = impact.impactIndex.toFixed(1);
     elements.metricEsChange.textContent = formatExpectedChangePercent(
       impact.esNearMonthChangePercent,
@@ -833,6 +851,7 @@ function setLiveMetricsEmpty() {
   elements.metricPeakMmi.textContent = "—";
   elements.metricPopulationExposed.textContent = "—";
   elements.metricLiquefactionExposed.textContent = "—";
+  elements.metricLiquefactionNote.textContent = "not modeled live";
   elements.metricImpactIndex.textContent = "—";
   elements.metricEsChange.textContent = "—";
 }
@@ -1145,7 +1164,11 @@ function drawRupture(input, elapsedS = null) {
       "aria-label": landmark.label,
     });
     marker.append(svgElement("circle", { r: 5 }));
-    const label = svgElement("text", { x: 8, y: -7 });
+    const label = svgElement("text", {
+      x: landmark.markerLabelX ?? 8,
+      y: landmark.markerLabelY ?? -7,
+      "text-anchor": landmark.markerLabelAnchor ?? "start",
+    });
     label.textContent = landmark.markerLabel ?? landmark.label.toUpperCase();
     marker.append(label);
     children.push(marker);
@@ -1834,7 +1857,7 @@ function runSimulation(event) {
     const rupture = ruptureSamples(input);
     terminalLine(
       "RUPTURE",
-      `${input.rupture.label} · ${rupture.at(-1).distanceAlongRuptureKm.toFixed(0)} km · ${input.rupture.ruptureVelocityKmS.toFixed(1)} km/s · ${ruptureDurationS(input).toFixed(0)}s to endpoints · geometry is a scenario proxy`,
+      `${input.rupture.label} · ${rupture.at(-1).distanceAlongRuptureKm.toFixed(0)} km · ${input.rupture.ruptureVelocityKmS.toFixed(1)} km/s · ${ruptureDurationS(input).toFixed(0)}s to endpoints · ${input.rupture.sourceNote ?? "geometry is a scenario proxy"}`,
       "danger",
       originTime,
     );
@@ -1970,6 +1993,12 @@ if (
   query.get("view") === "cascadia"
 ) {
   requestedRegion = "pacificNorthwest";
+} else if (
+  query.get("region") === "centralUnitedStates" ||
+  query.get("view") === "new-madrid" ||
+  query.get("view") === "newMadrid"
+) {
+  requestedRegion = "centralUnitedStates";
 }
 configureRegion(requestedRegion);
 applyPreset(requestedPreset ?? defaultPresetForRegion(requestedRegion));

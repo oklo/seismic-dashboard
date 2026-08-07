@@ -1,6 +1,6 @@
 # Quake impact → market impact
 
-A dependency-free browser simulator for exploring how a West Coast earthquake
+A dependency-free browser simulator for exploring how a major U.S. earthquake
 can move from professional strong-motion stations to an authenticated Chicago
 alert, then into a preliminary population-weighted impact estimate.
 
@@ -8,17 +8,19 @@ alert, then into a preliminary population-weighted impact estimate.
 
 The simulator defaults to the 1906 San Francisco M7.9 event. Choose the
 **SoCal · Cajon** dashboard view for the M7.8 gate-open proxy, or the
-**PNW · Cascadia** view for a 1700-style M9 scenario. Open the
+**PNW · Cascadia** view for a 1700-style M9 scenario, or **Central · New Madrid**
+for the official USGS BSSC2014 M7.5 planning scenario. Open the
 [Cajon](https://oklo.github.io/seismic-dashboard/?view=cajon) or
-[Cascadia](https://oklo.github.io/seismic-dashboard/?view=cascadia) view directly.
+[Cascadia](https://oklo.github.io/seismic-dashboard/?view=cascadia) view directly,
+or go straight to [New Madrid](https://oklo.github.io/seismic-dashboard/?view=new-madrid).
 Choose another historical or scenario event, click or drag its epicenter on the
 map, and press **Run simulation**. The dashboard includes:
 
 - A light laptop-demo layout with a fixed-height, independently scrolling
   code-style output pane, central regional map, and a narrow simulation/station rail.
 - Historical Bay Area presets, a Southern California M7.8 finite-rupture
-  scenario, and a 1700-style M9 Cascadia scenario with a 1,009 km bilateral
-  timing proxy and the official USGS median M9 ensemble ShakeMap.
+  scenario, a 1700-style M9 Cascadia scenario with the official USGS median M9
+  ensemble ShakeMap, and a USGS M7.5 New Madrid planning scenario.
 - Event-specific Bay ground motion for the 1906 San Francisco, 1989 Loma Prieta,
   and 2014 South Napa earthquakes from preferred USGS ShakeMap Atlas fields,
   plus the USGS HayWired M7.05 planning-scenario ShakeMap. Unsupported Bay and
@@ -27,10 +29,10 @@ map, and press **Run simulation**. The dashboard includes:
   susceptibility mapping with local PGA and magnitude through the FEMA Hazus
   6.1 conditional-probability equations. Liquefaction exposure remains separate
   from the shaking impact index and ES estimate.
-- Landscape Bay Area, Southern California, and Pacific Northwest maps with 2020
-  Census population cells that light by local MMI as strong motion reaches them,
-  named USGS Quaternary fault traces, and a regional locator inset.
-- Eight professional BK, CI, or UW/UO station locations with physical site names, local PGA,
+- Landscape Bay Area, Southern California, Pacific Northwest, and central-U.S.
+  maps with 2020 Census population cells that light by local MMI as strong
+  motion reaches them, sourced fault/rupture geometry, and a regional locator.
+- Eight professional BK, CI, UW/UO, or NM station locations with physical site names, local PGA,
   P/S arrivals, phase, compact waveform traces, and MMI that mounts during
   shaking before holding the final modeled site value.
 - Depth-aware P- and S-wave surface intersections driven by one monotonic clock;
@@ -64,7 +66,10 @@ effects. Cascadia uses the USGS ensemble field for final MMI/PGA and a separate
 1,009 km bilateral line for arrival timing. Its animated hypocenter, rupture
 timing, and five-minute site duration are dashboard assumptions, not a
 reconstruction of the 1700 rupture. Tsunami generation and inundation are not
-modeled.
+modeled. New Madrid uses the USGS scenario field for MMI/PGA/PGV and a centerline
+derived from its finite-rupture polygon; assumed 2.8 km/s bilateral activation
+controls timing only. The view does not invent a surface trace for the deeply
+buried source or infer liquefaction without a susceptibility/groundwater model.
 
 PGA is converted to MMI using the California coefficients from Worden et al.
 (2012), as implemented by
@@ -105,15 +110,18 @@ The checked-in map module is generated at build time from:
 
 - U.S. Census Bureau TIGERweb 2020 Census populated-block internal points for
   the California views and tract internal points for the larger Pacific
-  Northwest view. The Cascadia total covers the U.S. population only.
-- Census Bureau January 1, 2024 generalized California, Oregon, and Washington
-  state and county boundaries.
+  Northwest and New Madrid views. All represented population is U.S.-only.
+- Census Bureau January 1, 2024 generalized state and county boundaries, plus a
+  state-only contiguous-U.S. locator for New Madrid.
 - The USGS [Quaternary Fault and Fold Database](https://doi.org/10.5066/P9BCVRCK)
   for the Bay fault set and Southern California's San Andreas, San Jacinto,
   Elsinore, Sierra Madre, Garlock, and related traces, plus the Cascadia
   megathrust and selected Pacific Northwest crustal faults.
 - The USGS [median M9 Cascadia ensemble ShakeMap](https://earthquake.usgs.gov/scenarios/catalog/cszm9/),
   downsampled at build time while preserving its MMI and PGA values.
+- The USGS [BSSC2014 M7.5 New Madrid central-fault scenario](https://earthquake.usgs.gov/scenarios/eventpage/bssc2014newmadrid_32_m7p5_se/shakemap),
+  cropped and downsampled at build time while retaining MMI, PGA, and PGV, plus
+  its published finite-rupture geometry.
 - USGS ShakeMap Atlas grids for [1906 San Francisco](https://earthquake.usgs.gov/earthquakes/eventpage/official19060418131226300_12/shakemap),
   [1989 Loma Prieta](https://earthquake.usgs.gov/earthquakes/eventpage/nc216859/shakemap),
   and [2014 South Napa](https://earthquake.usgs.gov/earthquakes/eventpage/nc72282711/shakemap),
@@ -194,6 +202,34 @@ EarthScope FDSN metadata on 2026-08-05 as 200 Hz vertical accelerometer channels
 They are display-only and have not passed source-availability, response, gap,
 latency, replay, or detector-threshold validation.
 
+### New Madrid evidence and model boundary
+
+The New Madrid view uses the USGS BSSC2014 M7.5 central-fault scenario at
+36.455°N, 89.622°W and 15.6 km depth. It is a predictive planning ShakeMap with
+median ground motions, not an observed event or a reconstruction of any one of
+the three major 1811–1812 earthquakes. The checked-in crop spans MMI 3.1–8.71
+and retains the source product's PGA and PGV fields.
+
+The rupture line is the centerline of the USGS finite-rupture polygon. Bilateral
+activation at 2.8 km/s is used only to animate timing and does not modify the
+ShakeMap amplitude. The 45-second local shaking duration is an explicit upper-end
+dashboard assumption informed by the USGS [M7.7 central-U.S. simulation](https://earthquake.usgs.gov/scenarios/related/nmszM7.7.php),
+which found roughly 30–45 seconds of long-period shaking in some cities. It is not
+a duration field from the BSSC2014 product.
+
+USGS explains that New Madrid earthquake-producing faults are difficult to see
+because river sediments deeply bury them. The dashboard therefore does not draw
+an invented surface-fault trace; it shows only the scenario rupture. Although
+the 1811–1812 sequence produced widespread liquefaction, this view has no checked-
+in regional susceptibility and groundwater model. Its liquefaction metric says
+`not modeled`, and liquefaction does not enter impact or ES output.
+
+The eight stations (`NM.UALR`, `NM.CBHS`, `NM.PENM`, `NM.CGM3`, `NM.SIUC`,
+`NM.SLM`, `NM.EVIN`, and `NM.CLTN`) were selected from current EarthScope FDSN
+metadata on 2026-08-06 as professional vertical accelerometer channels. They are
+display-only and have not passed live-availability, response, gap, latency,
+replay, association, or detector-threshold validation.
+
 The eight Bay station streams mirror the validated BK detector profile; they are
 not a complete Bay Area sensor inventory. A 2026-08-02 DART probe also
 found actively updating 100 Hz vertical accelerometer files for `NC.JPR..HNZ` in
@@ -207,8 +243,8 @@ validation so its timing baseline is not changed silently.
 python3 -m http.server 8000
 ```
 
-Then open http://127.0.0.1:8000/. Add `?view=cajon` or `?view=cascadia` for a
-direct regional view.
+Then open http://127.0.0.1:8000/. Add `?view=cajon`, `?view=cascadia`, or
+`?view=new-madrid` for a direct regional view.
 
 To exercise the actual read-only NCEDC shadow view, use the
 [full seismic repository](https://github.com/oklo/seismic) with its live

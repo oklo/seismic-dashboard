@@ -181,6 +181,69 @@ export const PACIFIC_NORTHWEST_STATIONS = Object.freeze([
   },
 ]);
 
+// Current NM HNZ accelerometer metadata queried from the EarthScope FDSN
+// station service on 2026-08-06. These professional sites span the modeled
+// New Madrid shaking corridor for scenario display only; they are not a
+// validated live collector profile.
+export const CENTRAL_US_STATIONS = Object.freeze([
+  {
+    id: "NM.UALR.00.HNZ",
+    code: "UALR",
+    siteName: "University of Arkansas · Little Rock",
+    latitude: 34.7751,
+    longitude: -92.3429,
+  },
+  {
+    id: "NM.CBHS.00.HNZ",
+    code: "CBHS",
+    siteName: "Christian Brothers High School · Memphis",
+    latitude: 35.13258,
+    longitude: -89.86517,
+  },
+  {
+    id: "NM.PENM.00.HNZ",
+    code: "PENM",
+    siteName: "Penman · Portageville, Missouri",
+    latitude: 36.45,
+    longitude: -89.628,
+  },
+  {
+    id: "NM.CGM3.00.HNZ",
+    code: "CGM3",
+    siteName: "Cape Girardeau, Missouri",
+    latitude: 37.29775,
+    longitude: -89.6582,
+  },
+  {
+    id: "NM.SIUC.00.HNZ",
+    code: "SIUC",
+    siteName: "Carbondale, Illinois",
+    latitude: 37.7148,
+    longitude: -89.2174,
+  },
+  {
+    id: "NM.SLM.00.HNZ",
+    code: "SLM",
+    siteName: "St. Louis, Missouri",
+    latitude: 38.6361,
+    longitude: -90.2364,
+  },
+  {
+    id: "NM.EVIN..HNZ",
+    code: "EVIN",
+    siteName: "University of Evansville · Indiana",
+    latitude: 37.9716,
+    longitude: -87.529701,
+  },
+  {
+    id: "NM.CLTN.00.HNZ",
+    code: "CLTN",
+    siteName: "Cedars of Lebanon · Tennessee",
+    latitude: 36.09115,
+    longitude: -86.3315,
+  },
+]);
+
 // Backwards-compatible name for the physically validated eight-site Bay profile.
 export const STATIONS = BAY_AREA_STATIONS;
 
@@ -227,6 +290,26 @@ export const CASCADIA_1700_RUPTURE = Object.freeze({
     Object.freeze({ latitude: 47.7, longitude: -124.85 }),
     Object.freeze({ latitude: 48.5, longitude: -125.1 }),
     Object.freeze({ latitude: 49.2, longitude: -125.55 }),
+  ]),
+});
+
+export const NEW_MADRID_M75_RUPTURE = Object.freeze({
+  label: "USGS BSSC2014 New Madrid central-fault rupture",
+  ruptureVelocityKmS: 2.8,
+  hypocenterPointIndex: 1,
+  sourceNote:
+    "centerline derived from the USGS finite-rupture polygon; propagation timing is a dashboard assumption",
+  points: Object.freeze([
+    Object.freeze({ latitude: 36.233469, longitude: -89.569229 }),
+    Object.freeze({
+      latitude: 36.45497,
+      longitude: -89.621843,
+      label: "USGS scenario hypocenter",
+      markerLabel: "USGS HYPOCENTER",
+      markerLabelX: -8,
+      markerLabelAnchor: "end",
+    }),
+    Object.freeze({ latitude: 36.679425, longitude: -89.648597 }),
   ]),
 });
 
@@ -294,6 +377,18 @@ export const PRESETS = Object.freeze({
     shakingDurationS: 300,
     provenance:
       "1700 event scale · USGS M8.7–9.2 evidence + median M9 ensemble ShakeMap",
+  },
+  "new-madrid-m7.5": {
+    latitude: 36.45497,
+    longitude: -89.621843,
+    depthKm: 15.5926,
+    magnitude: 7.5,
+    shakeMapKey: "new-madrid-m7.5",
+    region: "centralUnitedStates",
+    rupture: NEW_MADRID_M75_RUPTURE,
+    shakingDurationS: 45,
+    provenance:
+      "USGS BSSC2014 New Madrid central-fault M7.5 median planning scenario",
   },
 });
 
@@ -374,6 +469,17 @@ const PACIFIC_NORTHWEST_PLACES = Object.freeze([
   { name: "Seattle", latitude: 47.6062, longitude: -122.3321 },
   { name: "Bellingham", latitude: 48.7519, longitude: -122.4787 },
 ]);
+const CENTRAL_US_PLACES = Object.freeze([
+  { name: "New Madrid seismic zone", latitude: 36.455, longitude: -89.622 },
+  { name: "Memphis", latitude: 35.1495, longitude: -90.049 },
+  { name: "Cape Girardeau", latitude: 37.3059, longitude: -89.5181 },
+  { name: "Paducah", latitude: 37.0834, longitude: -88.6001 },
+  { name: "Little Rock", latitude: 34.7465, longitude: -92.2896 },
+  { name: "St. Louis", latitude: 38.627, longitude: -90.1994 },
+  { name: "Evansville", latitude: 37.9716, longitude: -87.5711 },
+  { name: "Nashville", latitude: 36.1627, longitude: -86.7816 },
+  { name: "Chicago", latitude: 41.8781, longitude: -87.6298 },
+]);
 const MIN_STATION_SPAN_KM = 20.0;
 const TRIGGER_PEAK_G = 0.00012;
 const MAJOR_MEDIAN_PEAK_G = 0.00075;
@@ -425,6 +531,22 @@ export const REGIONS = Object.freeze({
       latitudeMax: 49.3,
       longitudeMin: -127.25,
       longitudeMax: -117.5,
+    }),
+  }),
+  centralUnitedStates: Object.freeze({
+    label: "Central U.S.",
+    mapKey: "centralUnitedStates",
+    overviewKey: "contiguousUnitedStates",
+    overviewLabel: "UNITED STATES",
+    eventPrefix: "nmsz",
+    networkLabel: "NM · HNZ",
+    stations: CENTRAL_US_STATIONS,
+    places: CENTRAL_US_PLACES,
+    associationGrid: Object.freeze({
+      latitudeMin: 33.0,
+      latitudeMax: 42.35,
+      longitudeMin: -94.5,
+      longitudeMax: -84.0,
     }),
   }),
 });

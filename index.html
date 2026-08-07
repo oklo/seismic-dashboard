@@ -44,7 +44,7 @@
           </div>
         </section>
 
-        <section class="panel network-panel" aria-label="Bay Area shaking and population impact">
+        <section class="panel network-panel" aria-label="Regional shaking and population impact">
           <div class="impact-dashboard">
             <div class="bay-column">
               <div class="bay-map-panel">
@@ -78,7 +78,7 @@
                     <g id="rupture-layer" aria-label="Scenario finite-fault rupture"></g>
                     <g id="california-inset" class="california-inset"
                       transform="translate(22 330) scale(.68)"
-                      aria-label="California locator inset"></g>
+                      aria-label="Regional locator inset"></g>
                     <g id="wavefront-layer" class="wave-layer" aria-hidden="true">
                       <path id="p-wavefront" class="wavefront p-wave"></path>
                       <path id="s-wavefront" class="wavefront s-wave"></path>
@@ -151,7 +151,7 @@
                 <div class="metric liquefaction-metric">
                   <span>Liquefaction ≥ 5%</span>
                   <strong id="metric-liquefaction-exposed">—</strong>
-                  <small>modeled residents</small>
+                  <small id="metric-liquefaction-note">modeled residents</small>
                 </div>
                 <div class="metric impact-metric">
                   <span>Impact index</span>
@@ -183,6 +183,7 @@
                       <option value="bay">SF Bay Area</option>
                       <option value="southernCalifornia">SoCal · Cajon</option>
                       <option value="pacificNorthwest">PNW · Cascadia</option>
+                      <option value="centralUnitedStates">Central · New Madrid</option>
                     </select>
                   </label>
                 </div>
@@ -204,6 +205,7 @@
                       <option value="san-jose">San Jose scenario · M 6.5</option>
                       <option value="cajon-gate-2026">Cajon gate-open proxy · M 7.8</option>
                       <option value="cascadia-1700">1700 Cascadia proxy · M 9.0</option>
+                      <option value="new-madrid-m7.5">New Madrid scenario · M 7.5</option>
                       <option value="custom">Custom / map placement</option>
                     </select>
                   </label>
@@ -231,12 +233,12 @@
                     <label class="field">
                       <span>Latitude</span>
                       <input id="latitude" name="latitude" type="number" value="37.750"
-                        min="32" max="50" step="0.001" inputmode="decimal" required>
+                        min="24" max="50" step="0.001" inputmode="decimal" required>
                     </label>
                     <label class="field">
                       <span>Longitude</span>
                       <input id="longitude" name="longitude" type="number" value="-122.550"
-                        min="-130" max="-114" step="0.001" inputmode="decimal" required>
+                        min="-130" max="-66" step="0.001" inputmode="decimal" required>
                     </label>
                   </div>
 
